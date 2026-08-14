@@ -1,0 +1,224 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum ScanType {
+  quick
+  deep
+  sandbox
+  full
+}
+
+enum ScanStatus {
+  pending
+  running
+  completed
+  failed
+  cancelled
+}
+
+enum Severity {
+  info
+  low
+  medium
+  high
+  critical
+}
+
+enum Confidence {
+  confirmed
+  likely
+  potential
+  unknown
+  not_observed
+  analysis_incomplete
+}
+
+enum FindingCategory {
+  permission_risk
+  dangerous_api
+  data_access
+  network_exfiltration
+  obfuscation
+  dependency_risk
+  purpose_mismatch
+  privacy_policy_discrepancy
+  runtime_behavior
+  csp_bypass
+  remote_code_execution
+  supply_chain
+}
+
+model Extension {
+  id              String    @id @default(cuid())
+  name            String
+  version         String
+  browser         String    @default("chrome")
+  source          String    @default("upload")
+  hash            String    @unique
+  size_bytes      Int
+  created_at      DateTime  @default(now())
+  last_scanned_at DateTime?
+  manifest_json   Json?
+  scans           Scan[]
+
+  @@index([hash])
+  @@index([created_at])
+}
+
+model Scan {
+  id                String      @id @default(cuid())
+  extension_id      String
+  extension         Extension   @relation(fields: [extension_id], references: [id], onDelete: Cascade)
+  type              ScanType
+  status            ScanStatus  @default(pending)
+  started_at        DateTime    @default(now())
+  completed_at      DateTime?
+  error             String?
+  config_json       Json
+  manifest_hash     String?
+  analyzer_version  String
+  ruleset_version   String
+  llm_model         String?
+  llm_provider      String?
+  findings          Finding[]
+  evidence          Evidence[]
+  network_events    NetworkEvent[]
+  code_findings     CodeFinding[]
+  data_flows        DataFlowPath[]
+  risk_scores       RiskScores?
+
+  @@index([extension_id])
+  @@index([status])
+  @@index([started_at])
+}
+
+model Finding {
+  id                String          @id @default(cuid())
+  scan_id           String
+  scan              Scan            @relation(fields: [scan_id], references: [id], onDelete: Cascade)
+  category          FindingCategory
+  severity          Severity
+  confidence        Confidence
+  title             String
+  description       String
+  technical_details String
+  recommendation    String
+  limitations       String
+  evidence_ids      String[]
+  affected_file     String?
+  affected_line     Int?
+  affected_api      String?
+  code_snippet      String?
+  created_at        DateTime        @default(now())
+
+  @@index([scan_id])
+  @@index([category])
+  @@index([severity])
+}
+
+model Evidence {
+  id          String   @id @default(cuid())
+  scan_id     String
+  scan        Scan     @relation(fields: [scan_id], references: [id], onDelete: Cascade)
+  type        String
+  source      String
+  description String
+  raw_data    Json
+  confidence  Confidence
+  created_at  DateTime @default(now())
+
+  @@index([scan_id])
+  @@index([type])
+}
+
+model NetworkEvent {
+  id                String     @id @default(cuid())
+  scan_id           String
+  scan              Scan       @relation(fields: [scan_id], references: [id], onDelete: Cascade)
+  url               String
+  domain            String
+  method            String
+  request_headers   Json?
+  response_headers  Json?
+  request_size      Int?
+  response_size     Int?
+  timestamp         DateTime
+  initiator         String?
+  stack_trace       String?
+  is_third_party    Boolean    @default(false)
+  risk_level        Severity
+  classification    String
+
+  @@index([scan_id])
+  @@index([domain])
+  @@index([timestamp])
+}
+
+model CodeFinding {
+  id              String   @id @default(cuid())
+  scan_id         String
+  scan            Scan     @relation(fields: [scan_id], references: [id], onDelete: Cascade)
+  file_path       String
+  line            Int
+  column          Int
+  api             String
+  pattern         String
+  severity        Severity
+  confidence      Confidence
+  context         String
+  ast_node_type   String
+
+  @@index([scan_id])
+  @@index([file_path])
+  @@index([api])
+}
+
+model DataFlowPath {
+  id              String   @id @default(cuid())
+  scan_id         String
+  scan            Scan     @relation(fields: [scan_id], references: [id], onDelete: Cascade)
+  source_json     Json
+  transformations Json
+  sink_json       Json
+  confidence      Confidence
+
+  @@index([scan_id])
+}
+
+model RiskScores {
+  id                      String   @id @default(cuid())
+  scan_id                 String   @unique
+  scan                    Scan     @relation(fields: [scan_id], references: [id], onDelete: Cascade)
+  overall_score           Float
+  permission_score        Float
+  code_score              Float
+  data_access_score       Float
+  exfiltration_score      Float
+  network_score           Float
+  obfuscation_score       Float
+  dependency_score        Float
+  purpose_mismatch_score  Float
+  runtime_score           Float
+  confidence              Float
+  breakdown_json          Json
+  created_at              DateTime @default(now())
+}
+
+model PermissionRisk {
+  id              String   @id @default(cuid())
+  scan_id         String
+  scan            Scan     @relation(fields: [scan_id], references: [id], onDelete: Cascade)
+  permission      String
+  risk_level      Severity
+  reason          String
+  used_in_code    Boolean?
+  evidence_ids    String[]
+
+  @@index([scan_id])
+}
