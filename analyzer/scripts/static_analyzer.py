@@ -56,14 +56,14 @@ def analyze_file(filepath, scan_id):
     obfuscation_patterns = [
         (r'eval\s*\(', 'eval_usage', 'high'),
         (r'new\s+Function\s*\(', 'function_constructor', 'high'),
-        (r'setTimeout\s*\\(\s*["\']', 'settimeout_string', 'medium'),
-        (r'setInterval\s*\\(\s*["\']', 'setinterval_string', 'medium'),
+        (r'setTimeout\s*\(\s*["\']', 'settimeout_string', 'medium'),
+        (r'setInterval\s*\(\s*["\']', 'setinterval_string', 'medium'),
         (r'\\x[0-9a-fA-F]{2}', 'hex_encoding', 'low'),
         (r'\\u[0-9a-fA-F]{4}', 'unicode_encoding', 'low'),
         (r'atob\s*\(', 'base64_decode', 'medium'),
         (r'btoa\s*\(', 'base64_encode', 'low'),
         (r'String\.fromCharCode\s*\(', 'charcode_obfuscation', 'medium'),
-        (r'\["\s*[^"']{50,}["']\s*,', 'large_string_array', 'medium'),
+        (r'\["\s*[^"\']{50,}["\']\s*,', 'large_string_array', 'medium'),
     ]
     
     for i, line in enumerate(lines, 1):
@@ -78,6 +78,7 @@ def analyze_file(filepath, scan_id):
                     'column': line.find(api) + 1,
                     'api': api,
                     'pattern': 'api_call',
+                    'category': category.lower(),
                     'severity': severity,
                     'confidence': 'likely',
                     'context': line.strip()[:200],
@@ -89,7 +90,7 @@ def analyze_file(filepath, scan_id):
                     'type': 'static_analysis',
                     'source': 'ast',
                     'description': f'Dangerous API call: {api}',
-                    'raw_data': {'api': api, 'file': filepath, 'line': i, 'category': category},
+                    'raw_data': {'api': api, 'file': filepath, 'line': i, 'category': category.lower()},
                     'confidence': 'likely',
                     'created_at': '2024-01-01T00:00:00Z'
                 })
@@ -105,6 +106,7 @@ def analyze_file(filepath, scan_id):
                     'column': 1,
                     'api': name,
                     'pattern': 'obfuscation',
+                    'category': 'obfuscation',
                     'severity': severity,
                     'confidence': 'potential',
                     'context': line.strip()[:200],
@@ -121,7 +123,7 @@ def analyze_file(filepath, scan_id):
                     'created_at': '2024-01-01T00:00:00Z'
                 })
     
-    urls = re.findall(r'(?:https?://|wss?://)[^\\s"\'`<>]+', content)
+    urls = re.findall(r'(?:https?://|wss?://)[^\s"\'`<>]+', content)
     for url in urls:
         suspicious = False
         try:
@@ -129,13 +131,13 @@ def analyze_file(filepath, scan_id):
             parsed = urlparse(url)
             suspicious_tlds = ['.tk', '.ml', '.ga', '.cf', '.top', '.xyz', '.click', '.download']
             suspicious_keywords = ['track', 'analytics', 'collect', 'telemetry', 'beacon', 'pixel', 'fingerprint']
-            if any(parsed.hostname.endswith(tld) for tld in suspicious_tlds):
+            if parsed.hostname and any(parsed.hostname.endswith(tld) for tld in suspicious_tlds):
                 suspicious = True
-            if any(kw in parsed.hostname or kw in parsed.path for kw in suspicious_keywords):
+            if parsed.hostname and any(kw in parsed.hostname or (parsed.path and kw in parsed.path) for kw in suspicious_keywords):
                 suspicious = True
-            if re.match(r'^\\d+\\.\\d+\\.\\d+\\.\\d+$', parsed.hostname):
+            if parsed.hostname and re.match(r'^\d+\.\d+\.\d+\.\d+$', parsed.hostname):
                 suspicious = True
-            if len(parsed.hostname) > 50:
+            if parsed.hostname and len(parsed.hostname) > 50:
                 suspicious = True
         except:
             pass
@@ -150,6 +152,7 @@ def analyze_file(filepath, scan_id):
                 'column': 1,
                 'api': url,
                 'pattern': 'suspicious_url',
+                'category': 'network_exfiltration',
                 'severity': 'medium',
                 'confidence': 'potential',
                 'context': f'Suspicious URL found: {url}',
@@ -177,6 +180,7 @@ def main():
     all_errors = []
     
     for root, dirs, files in os.walk(extension_path):
+        dirs[:] = [d for d in dirs if d not in ('.git', 'node_modules', '__pycache__', '.venv', 'dist', 'build')]
         for file in files:
             if file.endswith(('.js', '.ts', '.jsx', '.tsx', '.mjs', '.cjs')):
                 filepath = os.path.join(root, file)

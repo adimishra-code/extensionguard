@@ -1,8 +1,8 @@
 import { CodeFinding, Evidence, FindingCategory, Severity, Confidence, DataFlowPath, DataFlowNode } from '@extension-guard/shared';
 import { logger } from '../utils/logger';
 import { spawn } from 'child_process';
-import { mkdtempSync, rmSync } from 'fs';
-import { join } from 'path';
+import { mkdtempSync, rmSync, existsSync } from 'fs';
+import { join, resolve } from 'path';
 import { tmpdir } from 'os';
 
 export interface StaticAnalysisResult {
@@ -10,6 +10,19 @@ export interface StaticAnalysisResult {
   dataFlows: DataFlowPath[];
   evidences: Evidence[];
   errors: string[];
+}
+
+function getPythonScriptPath(): string {
+  const candidates = [
+    resolve(__dirname, '../../../analyzer/scripts/static_analyzer.py'),
+    resolve(__dirname, '../../analyzer/scripts/static_analyzer.py'),
+    resolve(process.cwd(), 'analyzer/scripts/static_analyzer.py'),
+    resolve(process.cwd(), '../analyzer/scripts/static_analyzer.py'),
+  ];
+  for (const p of candidates) {
+    if (existsSync(p)) return p;
+  }
+  return candidates[0];
 }
 
 export async function analyzeStatic(
@@ -27,10 +40,11 @@ export async function analyzeStatic(
   const errors: string[] = [];
 
   const tempDir = mkdtempSync(join(tmpdir(), 'extguard-static-'));
-  const pythonScriptPath = join(__dirname, '..', '..', 'analyzer', 'scripts', 'static_analyzer.py');
+  const pythonScriptPath = getPythonScriptPath();
+  const pythonBinary = process.env.PYTHON_PATH || (process.platform === 'win32' ? 'python' : 'python3');
 
-  return new Promise<StaticAnalysisResult>((resolve, reject) => {
-    const python = spawn('python3', [pythonScriptPath, scanId, extensionPath], {
+  return new Promise<StaticAnalysisResult>((resolve) => {
+    const python = spawn(pythonBinary, [pythonScriptPath, scanId, extensionPath], {
       timeout: options.maxFileSizeMb ? options.maxFileSizeMb * 1000 : 300000,
     });
 
@@ -77,7 +91,8 @@ export async function analyzeStatic(
         rmSync(tempDir, { recursive: true, force: true });
       } catch {}
       logger_.error({ err }, 'Static analysis process error');
-      reject(err);
+      errors.push(`Failed to start static analyzer: ${err.message}`);
+      resolve({ codeFindings: [], dataFlows: [], evidences: [], errors });
     });
   });
 }
