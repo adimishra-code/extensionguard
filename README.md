@@ -118,22 +118,34 @@ npm run dev
 
 # Or individually:
 npm run dev:frontend   # http://localhost:5173
-npm run dev:backend    # http://localhost:3000
+npm run dev:backend    # http://localhost:3001
+```
+
+### Docker Compose (One-Click Platform)
+
+```bash
+# Launch PostgreSQL, Redis, Fastify backend API, and Nginx frontend
+docker compose up --build -d
+```
+
+### CLI Scanner
+
+```bash
+# Directly analyze any extension directory or zip archive
+npx tsx scripts/scan_cli.ts ./tests/fixtures/sample-extension
 ```
 
 ### Environment Variables
 
-Create `.env` in `backend/`:
+Create `.env` or use `.env.example`:
 
 ```env
-DATABASE_URL="postgresql://user:pass@localhost:5432/extension_guard"
+DATABASE_URL="postgresql://postgres:postgres@localhost:5432/extension_guard?schema=public"
 REDIS_URL="redis://localhost:6379"
-PORT=3000
+PORT=3001
+HOST="0.0.0.0"
+FRONTEND_URL="http://localhost:5173"
 NODE_ENV=development
-
-# Optional: LLM providers
-OPENAI_API_KEY=""
-ANTHROPIC_API_KEY=""
 ```
 
 ---
@@ -147,23 +159,22 @@ ANTHROPIC_API_KEY=""
    - **Quick** — Static only (~30s)
    - **Deep** — Static + network (~2min)
    - **Sandbox** — Full runtime (~5min)
-   - **Full** — All analyzers + LLM (~10min)
-4. Upload `.crx`/`.zip` or paste Chrome Web Store URL
-5. View real-time progress and final report
+   - **Full** — All analyzers combined (~10min)
+4. Upload `.zip` or `.crx` extension file
+5. View real-time progress and final audit report
 
 ### API
 
 ```bash
-# Create scan
-curl -X POST http://localhost:3000/api/scans \
-  -H "Content-Type: application/json" \
-  -d '{"extensionId": "abc123", "type": "deep", "source": "upload"}'
+# Upload and queue scan
+curl -X POST http://localhost:3001/api/scans?scanType=quick \
+  -F "file=@extension.zip"
 
 # Get report
-curl http://localhost:3000/api/scans/{scanId}/report
+curl http://localhost:3001/api/scans/{scanId}/report
 
 # List scans
-curl http://localhost:3000/api/scans
+curl http://localhost:3001/api/scans
 ```
 
 ---
