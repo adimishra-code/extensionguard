@@ -1,3 +1,4 @@
+import { createHash } from 'crypto';
 import { ExtensionManifest, PermissionRisk, Severity, FindingCategory, Evidence } from '@extension-guard/shared';
 import { logger } from '../utils/logger';
 
@@ -108,9 +109,8 @@ function analyzeHostPermission(pattern: string): { category: string; risk: Sever
 }
 
 function calculateManifestHash(manifest: ExtensionManifest): string {
-  const crypto = require('crypto');
   const normalized = JSON.stringify(manifest, Object.keys(manifest).sort());
-  return crypto.createHash('sha256').update(normalized).digest('hex');
+  return createHash('sha256').update(normalized).digest('hex');
 }
 
 export async function analyzeManifest(
@@ -235,6 +235,7 @@ export async function analyzeManifest(
       }
     }
 
+    // Manifest V3 background service worker
     if (manifest.background?.service_worker) {
       const evidenceId = nextEvidenceId();
       evidences.push({
@@ -244,6 +245,33 @@ export async function analyzeManifest(
         source: 'background',
         description: `Service worker background script: ${manifest.background.service_worker}`,
         raw_data: { service_worker: manifest.background.service_worker, type: manifest.background.type },
+        confidence: 'confirmed',
+        created_at: new Date().toISOString(),
+      });
+    }
+
+    // Manifest V2 background scripts or page
+    if (manifest.background?.scripts && manifest.background.scripts.length > 0) {
+      const evidenceId = nextEvidenceId();
+      evidences.push({
+        id: evidenceId,
+        scan_id: scanId,
+        type: 'manifest',
+        source: 'background',
+        description: `Background scripts (MV2): ${manifest.background.scripts.join(', ')}`,
+        raw_data: { scripts: manifest.background.scripts, persistent: manifest.background.persistent },
+        confidence: 'confirmed',
+        created_at: new Date().toISOString(),
+      });
+    } else if (manifest.background?.page) {
+      const evidenceId = nextEvidenceId();
+      evidences.push({
+        id: evidenceId,
+        scan_id: scanId,
+        type: 'manifest',
+        source: 'background',
+        description: `Background page (MV2): ${manifest.background.page}`,
+        raw_data: { page: manifest.background.page, persistent: manifest.background.persistent },
         confidence: 'confirmed',
         created_at: new Date().toISOString(),
       });
@@ -267,13 +295,34 @@ export async function analyzeManifest(
 
     if (manifest.content_security_policy) {
       const evidenceId = nextEvidenceId();
+      const cspStr = typeof manifest.content_security_policy === 'string'
+        ? manifest.content_security_policy
+        : JSON.stringify(manifest.content_security_policy);
+
+      const hasUnsafeEval = cspStr.includes("'unsafe-eval'");
+      const hasHttpRemote = /http:\/\/[^\s;]+/i.test(cspStr);
+
+      if (hasUnsafeEval || hasHttpRemote) {
+        permissionRisks.push({
+          id: evidenceId,
+          scan_id: scanId,
+          permission: 'csp:insecure_policy',
+          risk_level: 'high',
+          reason: hasUnsafeEval 
+            ? "Content Security Policy contains 'unsafe-eval' which allows dynamic string execution"
+            : 'Content Security Policy allows insecure plaintext HTTP remote script loading',
+          used_in_code: null,
+          evidence_ids: [evidenceId],
+        });
+      }
+
       evidences.push({
         id: evidenceId,
         scan_id: scanId,
         type: 'manifest',
         source: 'csp',
-        description: 'Content Security Policy defined',
-        raw_data: { csp: manifest.content_security_policy },
+        description: hasUnsafeEval ? "Insecure Content Security Policy (allows 'unsafe-eval')" : 'Content Security Policy defined',
+        raw_data: { csp: manifest.content_security_policy, insecure: hasUnsafeEval || hasHttpRemote },
         confidence: 'confirmed',
         created_at: new Date().toISOString(),
       });

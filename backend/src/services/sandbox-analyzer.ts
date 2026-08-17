@@ -148,7 +148,7 @@ export async function analyzeSandbox(
             body: html
           });
           
-          // Log the request as a network event
+          // Log the synthetic request as a network event
           const eventId = nextNetworkId();
           const siteInfo = getSyntheticSiteInfo(domain);
           
@@ -158,24 +158,44 @@ export async function analyzeSandbox(
             url: url,
             domain: domain,
             method: request.method(),
-            request_headers: {},
-            response_headers: {}, // Simplified for now
-            request_size: 0,
+            request_headers: request.headers(),
+            response_headers: {},
+            request_size: request.postDataBuffer()?.length || 0,
             response_size: Buffer.byteLength(html),
             timestamp: new Date().toISOString(),
             initiator: '',
             stack_trace: '',
             is_third_party: false,
             risk_level: siteInfo?.risk || 'low',
-            classification: siteInfo ? siteInfo.category as 'first_party' | 'third_party' | 'suspicious' | 'tracking' | 'analytics' | 'cdn' | 'api' : 'unknown'
+            classification: siteInfo ? siteInfo.category as any : 'first_party'
           });
           
           return;
         }
+
+        // External / Third-party outbound request from extension
+        const eventId = nextNetworkId();
+        networkEvents.push({
+          id: eventId,
+          scan_id: scanId,
+          url: url,
+          domain: domain,
+          method: request.method(),
+          request_headers: request.headers(),
+          response_headers: {},
+          request_size: request.postDataBuffer()?.length || 0,
+          response_size: 0,
+          timestamp: new Date().toISOString(),
+          initiator: '',
+          stack_trace: '',
+          is_third_party: true,
+          risk_level: 'high',
+          classification: 'suspicious'
+        });
         
         await route.continue();
       } catch (err) {
-        logger_.warn({ url, error: err }, 'Error in route handler');
+        logger_.warn({ url, error: err instanceof Error ? err.message : String(err) }, 'Error in route handler');
         await route.continue(); // Fallback to actual request
       }
     });

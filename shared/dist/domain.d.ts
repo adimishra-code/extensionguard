@@ -39,6 +39,7 @@ export interface ContentScript {
 export interface BackgroundScript {
     service_worker?: string;
     scripts?: string[];
+    page?: string;
     persistent?: boolean;
     type?: 'module';
 }

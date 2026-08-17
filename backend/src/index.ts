@@ -33,6 +33,19 @@ fastify.register(rateLimit, {
 
 fastify.register(scanRoutes);
 
+let scanWorker: ReturnType<typeof createScanWorker> | null = null;
+
+fastify.setErrorHandler((error, request, reply) => {
+  logger.error({ url: request.url, method: request.method, error: error.message }, 'Unhandled request error');
+  if (error.validation) {
+    return reply.code(400).send({ error: 'Validation failed', details: error.validation });
+  }
+  const statusCode = error.statusCode || 500;
+  return reply.code(statusCode).send({ 
+    error: statusCode === 500 ? 'Internal Server Error' : error.message 
+  });
+});
+
 fastify.get('/health', async () => {
   return { status: 'ok', timestamp: new Date().toISOString(), version: config.ANALYZER_VERSION };
 });
@@ -53,12 +66,45 @@ fastify.get('/api/health', async () => {
   };
 });
 
+fastify.get('/api/health/detailed', async () => {
+  const dbStart = Date.now();
+  const dbStatus = await prisma.$queryRaw`SELECT 1`.then(() => 'connected').catch(() => 'disconnected');
+  const dbLatencyMs = Date.now() - dbStart;
+
+  const redisStart = Date.now();
+  const redisStatus = await redis.ping().then(() => 'connected').catch(() => 'disconnected');
+  const redisLatencyMs = Date.now() - redisStart;
+
+  const [scanCount, extCount] = await Promise.all([
+    prisma.scan.count().catch(() => 0),
+    prisma.extension.count().catch(() => 0),
+  ]);
+
+  return {
+    status: dbStatus === 'connected' && redisStatus === 'connected' ? 'healthy' : 'degraded',
+    timestamp: new Date().toISOString(),
+    version: config.ANALYZER_VERSION,
+    environment: config.NODE_ENV,
+    metrics: {
+      total_scans: scanCount,
+      total_extensions: extCount,
+      database_latency_ms: dbLatencyMs,
+      redis_latency_ms: redisLatencyMs,
+    },
+    services: {
+      database: { status: dbStatus, latency_ms: dbLatencyMs },
+      redis: { status: redisStatus, latency_ms: redisLatencyMs },
+      worker: { status: 'running', concurrency: 2 },
+    },
+  };
+});
+
 async function start() {
   try {
     await connectDatabase();
     await redis.connect();
     
-    const worker = createScanWorker(async (job: Job<ScanJobData>) => {
+    scanWorker = createScanWorker(async (job: Job<ScanJobData>) => {
       await processScanJob(job.data);
     });
     
@@ -73,7 +119,10 @@ async function start() {
 }
 
 async function shutdown() {
-  logger.info('Shutting down...');
+  logger.info('Shutting down gracefully...');
+  if (scanWorker) {
+    await scanWorker.close();
+  }
   await fastify.close();
   await scanQueue.close();
   await redis.quit();

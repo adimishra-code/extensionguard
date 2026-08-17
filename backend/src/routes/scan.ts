@@ -40,6 +40,18 @@ function isValidZipOrCrx(buffer: Buffer): boolean {
   return isZip || isCrx;
 }
 
+function extractZipBuffer(buffer: Buffer): Buffer {
+  // If CRX header (Cr24), find the start of the embedded ZIP payload
+  if (buffer[0] === 0x43 && buffer[1] === 0x72 && buffer[2] === 0x32 && buffer[3] === 0x34) {
+    for (let i = 4; i < Math.min(buffer.length - 4, 100000); i++) {
+      if (buffer[i] === 0x50 && buffer[i + 1] === 0x4b && buffer[i + 2] === 0x03 && buffer[i + 3] === 0x04) {
+        return buffer.subarray(i);
+      }
+    }
+  }
+  return buffer;
+}
+
 async function saveUpload(file: { file: NodeJS.ReadableStream; filename: string }): Promise<{ path: string; hash: string; size: number }> {
   const hash = crypto.createHash('sha256');
   const chunks: Buffer[] = [];
@@ -50,32 +62,42 @@ async function saveUpload(file: { file: NodeJS.ReadableStream; filename: string 
     hash.update(buf);
   }
   
-  const buffer = Buffer.concat(chunks);
+  const rawBuffer = Buffer.concat(chunks);
   
-  if (!isValidZipOrCrx(buffer)) {
+  if (!isValidZipOrCrx(rawBuffer)) {
     throw new Error('Invalid file format: file header does not match ZIP or CRX signature');
   }
 
+  const cleanZipBuffer = extractZipBuffer(rawBuffer);
   const fileHash = hash.digest('hex');
-  const fileExt = extname(file.filename) || '.zip';
-  const fileName = `${fileHash}${fileExt}`;
+  const fileName = `${fileHash}.zip`;
   const filePath = join(UPLOAD_DIR, fileName);
   
   mkdirSync(UPLOAD_DIR, { recursive: true });
-  writeFileSync(filePath, buffer);
+  writeFileSync(filePath, cleanZipBuffer);
   
-  return { path: filePath, hash: fileHash, size: buffer.length };
+  return { path: filePath, hash: fileHash, size: rawBuffer.length };
 }
 
 async function parseManifest(filePath: string): Promise<ExtensionManifest> {
   const zip = new AdmZip(filePath);
-  const manifestEntry = zip.getEntry('manifest.json');
+  const entries = zip.getEntries();
+  
+  let manifestEntry = zip.getEntry('manifest.json');
+  if (!manifestEntry) {
+    // Check if manifest is in a subdirectory (e.g. extension_dir/manifest.json)
+    manifestEntry = entries.find(e => e.entryName === 'manifest.json' || e.entryName.endsWith('/manifest.json')) || null;
+  }
   
   if (!manifestEntry) {
     throw new Error('manifest.json not found in extension package');
   }
   
-  return JSON.parse(manifestEntry.getData().toString('utf8'));
+  let manifestContent = manifestEntry.getData().toString('utf8');
+  // Strip UTF-8 BOM if present
+  manifestContent = manifestContent.replace(/^\uFEFF/, '').trim();
+  
+  return JSON.parse(manifestContent);
 }
 
 export async function scanRoutes(fastify: FastifyInstance) {

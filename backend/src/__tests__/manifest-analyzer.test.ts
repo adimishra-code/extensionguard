@@ -54,5 +54,35 @@ describe('Manifest Analyzer', () => {
     const bankRisk = result.permissionRisks.find(p => p.permission.includes('bankofamerica'));
     expect(bankRisk).toBeDefined();
     expect(bankRisk?.risk_level).toBe('critical');
+    expect(result.manifestHash).toHaveLength(64);
+  });
+
+  it('should detect MV2 background scripts and flag insecure CSP policies', async () => {
+    const mv2Manifest: ExtensionManifest = {
+      manifest_version: 2,
+      name: 'Legacy Extension',
+      version: '2.1.0',
+      description: 'MV2 Extension with insecure CSP',
+      permissions: ['tabs'],
+      background: {
+        scripts: ['bg_helper.js', 'bg_main.js'],
+        persistent: true,
+      },
+      content_security_policy: "script-src 'self' 'unsafe-eval' http://cdn.untrusted.com; object-src 'self'",
+    };
+
+    const result = await analyzeManifest(mv2Manifest, 'scan-mv2-test');
+
+    expect(result.errors).toHaveLength(0);
+
+    // Verify MV2 background scripts recorded in evidence
+    const bgEvidence = result.evidences.find(e => e.source === 'background');
+    expect(bgEvidence).toBeDefined();
+    expect(bgEvidence?.description).toContain('bg_helper.js');
+
+    // Verify insecure CSP flagged as high risk
+    const cspRisk = result.permissionRisks.find(p => p.permission === 'csp:insecure_policy');
+    expect(cspRisk).toBeDefined();
+    expect(cspRisk?.risk_level).toBe('high');
   });
 });
