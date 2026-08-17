@@ -91,6 +91,7 @@ model Scan {
   network_events    NetworkEvent[]
   code_findings     CodeFinding[]
   data_flows        DataFlowPath[]
+  permission_risks  PermissionRisk[]
   risk_scores       RiskScores?
 
   @@index([extension_id])
@@ -161,14 +162,15 @@ model NetworkEvent {
 }
 
 model CodeFinding {
-  id              String   @id @default(cuid())
+  id              String          @id @default(cuid())
   scan_id         String
-  scan            Scan     @relation(fields: [scan_id], references: [id], onDelete: Cascade)
+  scan            Scan            @relation(fields: [scan_id], references: [id], onDelete: Cascade)
   file_path       String
   line            Int
   column          Int
   api             String
   pattern         String
+  category        FindingCategory
   severity        Severity
   confidence      Confidence
   context         String
