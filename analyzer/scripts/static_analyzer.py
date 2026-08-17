@@ -204,16 +204,21 @@ def main():
     
     for root, dirs, files in os.walk(extension_path):
         dirs[:] = [d for d in dirs if d not in ('.git', 'node_modules', '__pycache__', '.venv', 'dist', 'build')]
-        for file in files:
             if file.endswith(('.js', '.ts', '.jsx', '.tsx', '.mjs', '.cjs')):
                 filepath = os.path.join(root, file)
+                rel_path = os.path.relpath(filepath, extension_path).replace('\\', '/')
                 try:
                     findings, evidence, errors = analyze_file(filepath, scan_id)
+                    for f in findings:
+                        f['file_path'] = rel_path
+                    for e in evidence:
+                        if 'raw_data' in e and isinstance(e['raw_data'], dict) and 'file' in e['raw_data']:
+                            e['raw_data']['file'] = rel_path
                     all_findings.extend(findings)
                     all_evidence.extend(evidence)
                     all_errors.extend(errors)
                 except Exception as e:
-                    all_errors.append(f"{filepath}: {str(e)}")
+                    all_errors.append(f"{rel_path}: {str(e)}")
     
     result = {
         'codeFindings': all_findings,

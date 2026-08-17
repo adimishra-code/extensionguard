@@ -1,9 +1,10 @@
 import { CodeFinding, Evidence, FindingCategory, Severity, Confidence, DataFlowPath, DataFlowNode } from '@extension-guard/shared';
 import { logger } from '../utils/logger';
 import { spawn } from 'child_process';
-import { mkdtempSync, rmSync, existsSync } from 'fs';
+import { mkdtempSync, rmSync, existsSync, statSync } from 'fs';
 import { join, resolve } from 'path';
 import { tmpdir } from 'os';
+import AdmZip from 'adm-zip';
 
 export interface StaticAnalysisResult {
   codeFindings: CodeFinding[];
@@ -40,11 +41,33 @@ export async function analyzeStatic(
   const errors: string[] = [];
 
   const tempDir = mkdtempSync(join(tmpdir(), 'extguard-static-'));
+  let targetDir = tempDir;
+
+  try {
+    if (existsSync(extensionPath) && statSync(extensionPath).isFile()) {
+      const zip = new AdmZip(extensionPath);
+      zip.extractAllTo(tempDir, true);
+    } else {
+      targetDir = extensionPath;
+    }
+  } catch (err) {
+    logger_.error({ err }, 'Failed to extract archive for static analysis');
+    try {
+      rmSync(tempDir, { recursive: true, force: true });
+    } catch {}
+    return {
+      codeFindings: [],
+      dataFlows: [],
+      evidences: [],
+      errors: [`Extraction failed: ${err instanceof Error ? err.message : String(err)}`],
+    };
+  }
+
   const pythonScriptPath = getPythonScriptPath();
   const pythonBinary = process.env.PYTHON_PATH || (process.platform === 'win32' ? 'python' : 'python3');
 
   return new Promise<StaticAnalysisResult>((resolve) => {
-    const python = spawn(pythonBinary, [pythonScriptPath, scanId, extensionPath], {
+    const python = spawn(pythonBinary, [pythonScriptPath, scanId, targetDir], {
       timeout: options.maxFileSizeMb ? options.maxFileSizeMb * 1000 : 300000,
     });
 
