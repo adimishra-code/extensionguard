@@ -1,4 +1,4 @@
-import { CodeFinding, Evidence, FindingCategory, Severity, Confidence, DataFlowPath, DataFlowNode } from '@extension-guard/shared';
+import { CodeFinding, Evidence, DataFlowPath } from '@extension-guard/shared';
 import { logger } from '../utils/logger';
 import { spawn } from 'child_process';
 import { mkdtempSync, rmSync, existsSync, statSync } from 'fs';
@@ -35,9 +35,6 @@ export async function analyzeStatic(
   } = {}
 ): Promise<StaticAnalysisResult> {
   const logger_ = logger.child({ scanId, service: 'static-analyzer' });
-  const codeFindings: CodeFinding[] = [];
-  const dataFlows: DataFlowPath[] = [];
-  const evidences: Evidence[] = [];
   const errors: string[] = [];
 
   const tempDir = mkdtempSync(join(tmpdir(), 'extguard-static-'));

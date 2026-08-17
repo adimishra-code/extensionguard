@@ -2,26 +2,11 @@ import { prisma } from '../utils/prisma';
 import { analyzeManifest, ManifestAnalysisResult } from './manifest-analyzer';
 import { analyzeStatic, StaticAnalysisResult } from './static-analyzer';
 import { analyzeSandbox, SandboxAnalysisResult } from './sandbox-analyzer';
-import { Scan, ScanStatus, Finding, Evidence, NetworkEvent, CodeFinding, DataFlowPath, RiskScores, PermissionRisk, Severity, FindingCategory, Confidence } from '@extension-guard/shared';
+import { Finding, Evidence, NetworkEvent, CodeFinding, RiskScores, PermissionRisk, Severity, FindingCategory, Confidence } from '@extension-guard/shared';
 import { v4 as uuidv4 } from 'uuid';
 import { logger } from '../utils/logger';
 import { ScanJobData } from '../queue';
-import { config } from '../config';
 import { rmSync, existsSync } from 'fs';
-
-interface ScanOrchestrationResult {
-  scan: Scan;
-  manifestAnalysis?: ManifestAnalysisResult;
-  staticAnalysis?: StaticAnalysisResult;
-  sandboxAnalysis?: SandboxAnalysisResult;
-  findings: Finding[];
-  allEvidence: Evidence[];
-  networkEvents: NetworkEvent[];
-  codeFindings: CodeFinding[];
-  dataFlows: DataFlowPath[];
-  riskScores: RiskScores;
-  permissionRisks: PermissionRisk[];
-}
 
 function calculateRiskScores(
     manifestAnalysis: ManifestAnalysisResult,

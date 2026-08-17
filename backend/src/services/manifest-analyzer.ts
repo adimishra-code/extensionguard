@@ -1,5 +1,5 @@
 import { createHash } from 'crypto';
-import { ExtensionManifest, PermissionRisk, Severity, FindingCategory, Evidence } from '@extension-guard/shared';
+import { ExtensionManifest, PermissionRisk, Severity, Evidence } from '@extension-guard/shared';
 import { logger } from '../utils/logger';
 
 export interface ManifestAnalysisResult {

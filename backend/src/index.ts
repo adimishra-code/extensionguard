@@ -5,7 +5,7 @@ import rateLimit from '@fastify/rate-limit';
 import sensible from '@fastify/sensible';
 import { Job } from 'bullmq';
 import { config } from './config';
-import { logger, createChildLogger } from './utils/logger';
+import { logger } from './utils/logger';
 import { connectDatabase, disconnectDatabase, prisma } from './utils/prisma';
 import { redis, scanQueue, createScanWorker, ScanJobData } from './queue';
 import { processScanJob } from './services/scan-orchestrator';

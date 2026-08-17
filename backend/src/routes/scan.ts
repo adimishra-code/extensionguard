@@ -3,10 +3,10 @@ import { prisma } from '../utils/prisma';
 import { addScanJob, scanQueue, ScanJobData } from '../queue';
 import { logger } from '../utils/logger';
 import { config } from '../config';
-import { writeFileSync, mkdirSync, rmSync, existsSync } from 'fs';
-import { join, extname } from 'path';
+import { writeFileSync, mkdirSync, rmSync } from 'fs';
+import { join } from 'path';
 import { tmpdir } from 'os';
-import { ScanType, ScanConfig, Severity, FindingCategory, ExtensionManifest } from '@extension-guard/shared';
+import { ScanType, ScanConfig, ExtensionManifest } from '@extension-guard/shared';
 import { z } from 'zod';
 import AdmZip from 'adm-zip';
 import crypto from 'crypto';
@@ -220,7 +220,7 @@ export async function scanRoutes(fastify: FastifyInstance) {
   // GET /api/scans - List all scans with pagination
   fastify.get('/api/scans', async (request: FastifyRequest<{ 
     Querystring: { limit?: string; offset?: string; status?: string; type?: string };
-  }>, reply: FastifyReply) => {
+  }>, _reply: FastifyReply) => {
     const { limit, offset } = paginationSchema.parse(request.query);
     const { status, type } = request.query;
 
@@ -276,7 +276,7 @@ export async function scanRoutes(fastify: FastifyInstance) {
   fastify.get('/api/scans/:id/findings', async (request: FastifyRequest<{ 
     Params: { id: string };
     Querystring: { severity?: string; category?: string; limit?: string; offset?: string };
-  }>, reply: FastifyReply) => {
+  }>, _reply: FastifyReply) => {
     const query = findingsQuerySchema.parse(request.query);
     
     const where: any = { scan_id: request.params.id };
@@ -354,7 +354,7 @@ export async function scanRoutes(fastify: FastifyInstance) {
   // GET /api/extensions - List extensions with search and pagination
   fastify.get('/api/extensions', async (request: FastifyRequest<{ 
     Querystring: { limit?: string; offset?: string; search?: string };
-  }>, reply: FastifyReply) => {
+  }>, _reply: FastifyReply) => {
     const { limit, offset, search } = paginationSchema.parse(request.query);
     
     const where = search ? {

@@ -1,7 +1,7 @@
-import { NetworkEvent, Evidence, Confidence, Severity } from '@extension-guard/shared';
+import { NetworkEvent, Evidence, Severity } from '@extension-guard/shared';
 import { logger } from '../utils/logger';
-import { chromium, Browser, BrowserContext, Page } from 'playwright';
-import { writeFileSync, rmSync, existsSync } from 'fs';
+import { chromium, Browser, BrowserContext } from 'playwright';
+import { rmSync, existsSync } from 'fs';
 import * as path from 'path';
 import { tmpdir } from 'os';
 import AdmZip from 'adm-zip';
@@ -92,7 +92,7 @@ export async function analyzeSandbox(
     return `N-${scanId.slice(0, 8)}-${(++networkCounter).toString().padStart(3, '0')}`;
   }
   
-  const timeoutMs = (options.timeoutSeconds || 120) * 1000;
+  const _timeoutMs = (options.timeoutSeconds || 120) * 1000;
   
   let browser: Browser | null = null;
   let context: BrowserContext | null = null;

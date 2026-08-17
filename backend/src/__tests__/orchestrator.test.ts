@@ -1,7 +1,4 @@
 import { describe, it, expect } from 'vitest';
-import type { ManifestAnalysisResult } from '../services/manifest-analyzer';
-import type { StaticAnalysisResult } from '../services/static-analyzer';
-import type { SandboxAnalysisResult } from '../services/sandbox-analyzer';
 
 describe('Scan Orchestrator Scoring & Findings', () => {
   it('calculates weighted static risk scores accurately', () => {
