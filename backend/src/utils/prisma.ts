@@ -13,7 +13,8 @@ export const prisma = globalForPrisma.prisma || new PrismaClient({
 
 if (process.env.NODE_ENV !== 'production') globalForPrisma.prisma = prisma;
 
-prisma.$on('query', (e) => {
+// Log slow queries in development
+(prisma as any).$on('query', (e: any) => {
   if (e.duration > 100) {
     logger.warn({ duration: e.duration, query: e.query }, 'Slow query detected');
   }

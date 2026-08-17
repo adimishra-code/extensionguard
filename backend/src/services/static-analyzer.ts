@@ -22,7 +22,7 @@ function getPythonScriptPath(): string {
   for (const p of candidates) {
     if (existsSync(p)) return p;
   }
-  return candidates[0];
+  return candidates[0]!;
 }
 
 export async function analyzeStatic(

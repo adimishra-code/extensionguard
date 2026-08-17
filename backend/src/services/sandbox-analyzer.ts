@@ -240,7 +240,7 @@ export async function analyzeSandbox(
         }
         
       } catch (err) {
-        logger_.warn({ site, error: err.message }, 'Failed to load synthetic site');
+        logger_.warn({ site, error: err instanceof Error ? err.message : String(err) }, 'Failed to load synthetic site');
         // Continue with other sites
       }
     }
@@ -282,7 +282,7 @@ export async function analyzeSandbox(
         }
         
       } catch (err) {
-        logger_.warn({ site, error: err.message }, 'Error testing forms');
+        logger_.warn({ site, error: err instanceof Error ? err.message : String(err) }, 'Error testing forms');
       }
     }
     

@@ -7,6 +7,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { logger } from '../utils/logger';
 import { ScanJobData } from '../queue';
 import { config } from '../config';
+import { rmSync, existsSync } from 'fs';
 
 interface ScanOrchestrationResult {
   scan: Scan;
@@ -25,7 +26,8 @@ interface ScanOrchestrationResult {
 function calculateRiskScores(
     manifestAnalysis: ManifestAnalysisResult,
     staticAnalysis: StaticAnalysisResult,
-    sandboxAnalysis: SandboxAnalysisResult
+    sandboxAnalysis: SandboxAnalysisResult,
+    hasRuntimeEnabled: boolean = false
   ): RiskScores {
     let permissionScore = 0;
     let codeScore = 0;
@@ -42,7 +44,8 @@ function calculateRiskScores(
 
     for (const cf of staticAnalysis.codeFindings) {
       const weight = cf.severity === 'critical' ? 10 : cf.severity === 'high' ? 7 : cf.severity === 'medium' ? 4 : 1;
-      switch (cf.category) {
+      const cat = mapCategory(cf.category);
+      switch (cat) {
         case 'dangerous_api':
           codeScore += weight;
           break;
@@ -70,7 +73,6 @@ function calculateRiskScores(
     
     // Also consider evidence from sandbox
     for (const evidence of sandboxAnalysis.evidences) {
-      // Weight evidence by confidence
       let confidenceWeight = 1;
       switch (evidence.confidence) {
         case 'confirmed': confidenceWeight = 3; break;
@@ -78,7 +80,7 @@ function calculateRiskScores(
         case 'potential': confidenceWeight = 1; break;
         default: confidenceWeight = 0.5;
       }
-      runtimeScore += confidenceWeight * 2; // Evidence contributes to runtime score
+      runtimeScore += confidenceWeight * 2;
     }
 
     permissionScore = Math.min(100, permissionScore * 2);
@@ -87,21 +89,30 @@ function calculateRiskScores(
     exfiltrationScore = Math.min(100, exfiltrationScore * 2);
     networkScore = Math.min(100, networkScore * 1.5);
     obfuscationScore = Math.min(100, obfuscationScore * 3);
-    runtimeScore = Math.min(100, runtimeScore); // Cap runtime score at 100
+    runtimeScore = Math.min(100, runtimeScore);
 
-    const overall = Math.round(
-      permissionScore * 0.10 +
-      codeScore * 0.20 +
-      dataAccessScore * 0.10 +
-      exfiltrationScore * 0.15 +
-      networkScore * 0.10 +
-      obfuscationScore * 0.05 +
-      runtimeScore * 0.30
-    );
+    const overall = hasRuntimeEnabled
+      ? Math.round(
+          permissionScore * 0.15 +
+          codeScore * 0.20 +
+          dataAccessScore * 0.10 +
+          exfiltrationScore * 0.15 +
+          networkScore * 0.10 +
+          obfuscationScore * 0.05 +
+          runtimeScore * 0.25
+        )
+      : Math.round(
+          permissionScore * 0.20 +
+          codeScore * 0.25 +
+          dataAccessScore * 0.15 +
+          exfiltrationScore * 0.20 +
+          networkScore * 0.10 +
+          obfuscationScore * 0.10
+        );
 
     return {
       scan_id: '',
-      overall_score: overall,
+      overall_score: Math.min(100, overall),
       permission_score: Math.round(permissionScore),
       code_score: Math.round(codeScore),
       data_access_score: Math.round(dataAccessScore),
@@ -111,13 +122,13 @@ function calculateRiskScores(
       dependency_score: 0,
       purpose_mismatch_score: 0,
       runtime_score: Math.round(runtimeScore),
-      confidence: 0.8,
+      confidence: 0.85,
       breakdown: [
         { category: 'permission_risk', score: Math.round(permissionScore), finding_count: manifestAnalysis.permissionRisks.length, max_severity: getMaxSeverity(manifestAnalysis.permissionRisks.map(p => p.risk_level)) },
-        { category: 'dangerous_api', score: Math.round(codeScore), finding_count: staticAnalysis.codeFindings.filter(c => c.category === 'dangerous_api').length, max_severity: getMaxSeverity(staticAnalysis.codeFindings.filter(c => c.category === 'dangerous_api').map(c => c.severity)) },
-        { category: 'data_access', score: Math.round(dataAccessScore), finding_count: staticAnalysis.codeFindings.filter(c => c.category === 'data_access').length, max_severity: getMaxSeverity(staticAnalysis.codeFindings.filter(c => c.category === 'data_access').map(c => c.severity)) },
-        { category: 'network_exfiltration', score: Math.round(exfiltrationScore), finding_count: staticAnalysis.codeFindings.filter(c => c.category === 'network_exfiltration').length, max_severity: getMaxSeverity(staticAnalysis.codeFindings.filter(c => c.category === 'network_exfiltration').map(c => c.severity)) },
-        { category: 'obfuscation', score: Math.round(obfuscationScore), finding_count: staticAnalysis.codeFindings.filter(c => c.category === 'obfuscation').length, max_severity: getMaxSeverity(staticAnalysis.codeFindings.filter(c => c.category === 'obfuscation').map(c => c.severity)) },
+        { category: 'dangerous_api', score: Math.round(codeScore), finding_count: staticAnalysis.codeFindings.filter(c => mapCategory(c.category) === 'dangerous_api').length, max_severity: getMaxSeverity(staticAnalysis.codeFindings.filter(c => mapCategory(c.category) === 'dangerous_api').map(c => c.severity)) },
+        { category: 'data_access', score: Math.round(dataAccessScore), finding_count: staticAnalysis.codeFindings.filter(c => mapCategory(c.category) === 'data_access').length, max_severity: getMaxSeverity(staticAnalysis.codeFindings.filter(c => mapCategory(c.category) === 'data_access').map(c => c.severity)) },
+        { category: 'network_exfiltration', score: Math.round(exfiltrationScore), finding_count: staticAnalysis.codeFindings.filter(c => mapCategory(c.category) === 'network_exfiltration').length, max_severity: getMaxSeverity(staticAnalysis.codeFindings.filter(c => mapCategory(c.category) === 'network_exfiltration').map(c => c.severity)) },
+        { category: 'obfuscation', score: Math.round(obfuscationScore), finding_count: staticAnalysis.codeFindings.filter(c => mapCategory(c.category) === 'obfuscation').length, max_severity: getMaxSeverity(staticAnalysis.codeFindings.filter(c => mapCategory(c.category) === 'obfuscation').map(c => c.severity)) },
         { category: 'runtime_behavior', score: Math.round(runtimeScore), finding_count: sandboxAnalysis.networkEvents.length + sandboxAnalysis.evidences.length, max_severity: getMaxSeverity([...sandboxAnalysis.networkEvents.map(e => e.risk_level as Severity), ...sandboxAnalysis.evidences.map(e => 
           e.confidence === 'confirmed' ? 'high' as Severity :
           e.confidence === 'likely' ? 'medium' as Severity :
@@ -127,24 +138,43 @@ function calculateRiskScores(
     };
   }
 
-function getMaxSeverity(severities: string[]): 'info' | 'low' | 'medium' | 'high' | 'critical' {
-  const order = ['info', 'low', 'medium', 'high', 'critical'];
-  let max = 'info';
+function getMaxSeverity(severities: string[]): Severity {
+  const order: Severity[] = ['info', 'low', 'medium', 'high', 'critical'];
+  let max: Severity = 'info';
   for (const s of severities) {
-    if (order.indexOf(s) > order.indexOf(max)) max = s as any;
+    if (order.indexOf(s as Severity) > order.indexOf(max)) max = s as Severity;
   }
   return max;
 }
 
 function mapCategory(cat: string): FindingCategory {
+  const normalized = (cat || '').toLowerCase().trim();
+  const validCategories: FindingCategory[] = [
+    'permission_risk',
+    'dangerous_api',
+    'data_access',
+    'network_exfiltration',
+    'obfuscation',
+    'dependency_risk',
+    'purpose_mismatch',
+    'privacy_policy_discrepancy',
+    'runtime_behavior',
+    'csp_bypass',
+    'remote_code_execution',
+    'supply_chain',
+  ];
+  if (validCategories.includes(normalized as FindingCategory)) {
+    return normalized as FindingCategory;
+  }
   const map: Record<string, FindingCategory> = {
-    'DANGEROUS_API': 'dangerous_api',
-    'DATA_ACCESS': 'data_access',
-    'NETWORK_EXFILTRATION': 'network_exfiltration',
-    'REMOTE_CODE_EXECUTION': 'remote_code_execution',
-    'OBFUSCATION': 'obfuscation',
+    'dangerous_api': 'dangerous_api',
+    'data_access': 'data_access',
+    'network_exfiltration': 'network_exfiltration',
+    'remote_code_execution': 'remote_code_execution',
+    'obfuscation': 'obfuscation',
+    'permission_risk': 'permission_risk',
   };
-  return map[cat] || 'permission_risk';
+  return map[normalized] || 'dangerous_api';
 }
 
 function mapConfidence(conf: string): Confidence {
@@ -163,7 +193,7 @@ async function persistResults(
     allEvidence: Evidence[],
     networkEvents: NetworkEvent[],
     codeFindings: CodeFinding[],
-    dataFlows: DataFlowPath[],
+    dataFlows: any[],
     permissionRisks: PermissionRisk[]
   ) {
     await prisma.$transaction(async (tx) => {
@@ -172,12 +202,12 @@ async function persistResults(
         data: { status: 'completed', completed_at: new Date() },
       });
 
-      await tx.finding.createMany({ data: findings });
-      await tx.evidence.createMany({ data: allEvidence });
-      await tx.networkEvent.createMany({ data: networkEvents });
-      await tx.codeFinding.createMany({ data: codeFindings });
-      await tx.dataFlowPath.createMany({ data: dataFlows });
-      await tx.permissionRisk.createMany({ data: permissionRisks });
+      await tx.finding.createMany({ data: findings as any });
+      await tx.evidence.createMany({ data: allEvidence as any });
+      await tx.networkEvent.createMany({ data: networkEvents as any });
+      await tx.codeFinding.createMany({ data: codeFindings as any });
+      await tx.dataFlowPath.createMany({ data: dataFlows as any });
+      await tx.permissionRisk.createMany({ data: permissionRisks as any });
 
       await tx.riskScores.create({
         data: {
@@ -193,7 +223,7 @@ async function persistResults(
           purpose_mismatch_score: riskScores.purpose_mismatch_score,
           runtime_score: riskScores.runtime_score,
           confidence: riskScores.confidence,
-          breakdown_json: riskScores.breakdown,
+          breakdown_json: riskScores.breakdown as any,
         },
       });
     });
@@ -286,14 +316,21 @@ export async function processScanJob(jobData: ScanJobData): Promise<void> {
       });
     }
 
-    const networkEvents: NetworkEvent[] = [
-      ...staticAnalysis.codeFindings.map(cf => ({
-        // Convert code findings to network events if they represent network activity
-        ...(cf.category === 'NETWORK_EXFILTRATION' ? {
+    const mappedNetworkEvents: NetworkEvent[] = [];
+    for (const cf of staticAnalysis.codeFindings) {
+      const cat = mapCategory(cf.category);
+      if (cat === 'network_exfiltration') {
+        let domain = 'unknown';
+        if (cf.api.startsWith('http')) {
+          try {
+            domain = new URL(cf.api).hostname;
+          } catch {}
+        }
+        mappedNetworkEvents.push({
           id: uuidv4(),
           scan_id: scanId,
           url: cf.api.startsWith('http') ? cf.api : `unknown://${cf.api}`,
-          domain: cf.api.startsWith('http') ? new URL(cf.api).hostname : 'unknown',
+          domain,
           method: 'UNKNOWN',
           request_headers: {},
           response_headers: {},
@@ -304,9 +341,13 @@ export async function processScanJob(jobData: ScanJobData): Promise<void> {
           stack_trace: '',
           is_third_party: true,
           risk_level: cf.severity,
-          classification: 'unknown'
-        } : null)
-      })).filter((ev): ev is NetworkEvent => ev !== null),
+          classification: 'unknown',
+        });
+      }
+    }
+
+    const networkEvents: NetworkEvent[] = [
+      ...mappedNetworkEvents,
       ...sandboxAnalysis.networkEvents
     ];
     const codeFindings: CodeFinding[] = staticAnalysis.codeFindings.map(cf => ({
@@ -317,18 +358,18 @@ export async function processScanJob(jobData: ScanJobData): Promise<void> {
       column: cf.column,
       api: cf.api,
       pattern: cf.pattern,
-      category: cf.category,
+      category: mapCategory(cf.category),
       severity: cf.severity,
       confidence: mapConfidence(cf.confidence),
       context: cf.context,
       ast_node_type: cf.ast_node_type,
     }));
-    const dataFlows: DataFlowPath[] = staticAnalysis.dataFlows.map(df => ({
+    const dataFlows = staticAnalysis.dataFlows.map(df => ({
       id: uuidv4(),
       scan_id: scanId,
-      source_json: df.source,
-      transformations_json: df.transformations,
-      sink_json: df.sink,
+      source_json: df.source as any,
+      transformations: df.transformations as any,
+      sink_json: df.sink as any,
       confidence: df.confidence,
     }));
 
@@ -342,7 +383,7 @@ export async function processScanJob(jobData: ScanJobData): Promise<void> {
       evidence_ids: pr.evidence_ids,
     }));
 
-    const riskScores = calculateRiskScores(manifestAnalysis, staticAnalysis, sandboxAnalysis);
+    const riskScores = calculateRiskScores(manifestAnalysis, staticAnalysis, sandboxAnalysis, scanConfig.enableRuntime);
     riskScores.scan_id = scanId;
 
     await persistResults(
@@ -372,6 +413,15 @@ export async function processScanJob(jobData: ScanJobData): Promise<void> {
       },
     });
     throw error;
+  } finally {
+    try {
+      if (filePath && existsSync(filePath)) {
+        rmSync(filePath, { force: true });
+        logger_.debug({ filePath }, 'Cleaned up uploaded scan package');
+      }
+    } catch (cleanupErr) {
+      logger_.warn({ cleanupErr, filePath }, 'Failed to remove uploaded scan package');
+    }
   }
 }
 
