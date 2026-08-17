@@ -130,7 +130,6 @@ export async function analyzeManifest(
   try {
     const allPermissions = [
       ...(manifest.permissions || []),
-      ...(manifest.host_permissions || []),
       ...(manifest.optional_permissions || []),
     ];
 

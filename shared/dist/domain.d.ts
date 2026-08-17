@@ -180,17 +180,26 @@ export interface RiskBreakdown {
 export interface Scan {
     id: string;
     extension_id: string;
+    extension?: Extension;
     type: ScanType;
     status: ScanStatus;
     started_at: string;
     completed_at?: string;
     error?: string;
-    config: ScanConfig;
+    config?: ScanConfig;
+    config_json?: ScanConfig;
     manifest_hash?: string;
     analyzer_version: string;
     ruleset_version: string;
     llm_model?: string;
     llm_provider?: string;
+    findings?: Finding[];
+    evidence?: Evidence[];
+    network_events?: NetworkEvent[];
+    code_findings?: CodeFinding[];
+    data_flows?: DataFlowPath[];
+    permission_risks?: PermissionRisk[];
+    risk_scores?: RiskScores;
 }
 export interface ScanConfig {
     enable_static: boolean;
@@ -213,6 +222,8 @@ export interface Extension {
     created_at: string;
     last_scanned_at?: string;
     manifest?: ExtensionManifest;
+    manifest_json?: ExtensionManifest;
+    scans?: Scan[];
 }
 export interface ExtensionSummary {
     extension: Extension;
