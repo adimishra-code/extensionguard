@@ -1,7 +1,7 @@
 import axios from 'axios';
-import type { Scan, Extension, Finding, RiskScores, ScanConfig, ScanType } from '@extension-guard/shared';
+import type { Scan, Extension, Finding, ScanType } from '@extension-guard/shared';
 
-const api = axios.create({
+export const api = axios.create({
   baseURL: '/api',
   timeout: 30000,
 });
@@ -9,15 +9,12 @@ const api = axios.create({
 api.interceptors.response.use(
   (response) => response,
   (error) => {
-    if (error.response?.status === 401) {
-      // Handle auth if needed
-    }
     return Promise.reject(error);
   }
 );
 
 export const scansApi = {
-  list: (params?: { limit?: number; offset?: number }) =>
+  list: (params?: { limit?: number; offset?: number; status?: string; type?: string }) =>
     api.get<{ scans: Scan[]; total: number }>('/scans', { params }),
   
   get: (id: string) =>
@@ -27,13 +24,13 @@ export const scansApi = {
     const formData = new FormData();
     formData.append('file', file);
     formData.append('scanType', scanType);
-    return api.post<{ scan_id: string; extension_id: string }>('/scans', formData, {
+    return api.post<{ scan_id: string; extension_id: string; status: string; message: string }>('/scans', formData, {
       headers: { 'Content-Type': 'multipart/form-data' },
     });
   },
   
   delete: (id: string) =>
-    api.delete(`/scans/${id}`),
+    api.delete<{ success: boolean }>(`/scans/${id}`),
   
   getFindings: (id: string, params?: { severity?: string; category?: string; limit?: number; offset?: number }) =>
     api.get<{ findings: Finding[]; total: number }>(`/scans/${id}/findings`, { params }),

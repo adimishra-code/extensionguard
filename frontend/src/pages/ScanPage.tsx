@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Upload, FileText, Shield, AlertCircle, CheckCircle, X } from 'lucide-react';
-import { api } from '../lib/api';
+import { scansApi } from '../lib/api';
 import { cn } from '../lib/utils';
 import type { ScanType } from '@extension-guard/shared';
 
@@ -20,7 +20,7 @@ export function ScanPage() {
 
   const { mutate: createScan, isPending, error } = useMutation({
     mutationFn: ({ file, scanType }: { file: File; scanType: ScanType }) => 
-      api.post('/scans', file, { params: { scanType } }).then(r => r.data),
+      scansApi.create(file, scanType).then(r => r.data),
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['scans'] });
       queryClient.invalidateQueries({ queryKey: ['dashboard'] });

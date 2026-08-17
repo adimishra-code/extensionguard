@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
-import { Shield, AlertTriangle, CheckCircle, Clock, FileText, TrendingUp } from 'lucide-react';
+import { Shield, AlertTriangle, CheckCircle, FileText, TrendingUp } from 'lucide-react';
 import { formatRelativeTime, getSeverityBadge, cn } from '../lib/utils';
-import { api } from '../lib/api';
+import { scansApi, extensionsApi } from '../lib/api';
 import type { Extension, Scan } from '@extension-guard/shared';
 
 function StatCard({ title, value, icon: Icon, trend, color }: { 
@@ -31,7 +31,7 @@ function StatCard({ title, value, icon: Icon, trend, color }: {
   );
 }
 
-function RecentScanRow({ scan, extension }: { scan: Scan; extension: Extension }) {
+function RecentScanRow({ scan, extension }: { scan: Scan; extension?: Extension }) {
   const statusColors: Record<string, string> = {
     completed: 'bg-success-100 text-success-800',
     running: 'bg-primary-100 text-primary-800',
@@ -43,25 +43,23 @@ function RecentScanRow({ scan, extension }: { scan: Scan; extension: Extension }
   return (
     <tr className="border-b border-gray-100 hover:bg-gray-50">
       <td className="px-4 py-3">
-        <div className="font-medium text-gray-900">{extension.name}</div>
-        <div className="text-sm text-gray-500">v{extension.version}</div>
+        <div className="font-medium text-gray-900">{extension?.name || 'Unknown Extension'}</div>
+        <div className="text-sm text-gray-500">v{extension?.version || '0.0.0'}</div>
       </td>
       <td className="px-4 py-3">
-        <span className={cn('badge', statusColors[scan.status])}>
+        <span className={cn('badge', statusColors[scan.status] || 'bg-gray-100 text-gray-800')}>
           {scan.status}
         </span>
       </td>
       <td className="px-4 py-3 text-sm text-gray-500">
         {scan.risk_scores ? (
-          <>
-            <span className={cn('badge', getSeverityBadge(
-              scan.risk_scores.overall_score >= 70 ? 'critical' :
-              scan.risk_scores.overall_score >= 50 ? 'high' :
-              scan.risk_scores.overall_score >= 30 ? 'medium' : 'low'
-            ))}>
-              {scan.risk_scores.overall_score}/100
-            </span>
-          </>
+          <span className={cn('badge', getSeverityBadge(
+            scan.risk_scores.overall_score >= 70 ? 'critical' :
+            scan.risk_scores.overall_score >= 50 ? 'high' :
+            scan.risk_scores.overall_score >= 30 ? 'medium' : 'low'
+          ))}>
+            {scan.risk_scores.overall_score}/100
+          </span>
         ) : (
           '—'
         )}
@@ -79,20 +77,20 @@ function RecentScanRow({ scan, extension }: { scan: Scan; extension: Extension }
 }
 
 export function Dashboard() {
-  const { data: extensions } = useQuery({
+  const { data: extensionsData } = useQuery({
     queryKey: ['extensions'],
-    queryFn: () => api.get('/extensions?limit=5').then(r => r.data),
+    queryFn: () => extensionsApi.list({ limit: 5 }).then(r => r.data),
   });
 
-  const { data: scans } = useQuery({
+  const { data: scansData } = useQuery({
     queryKey: ['scans', 'recent'],
-    queryFn: () => api.get('/scans?limit=10').then(r => r.data),
+    queryFn: () => scansApi.list({ limit: 10 }).then(r => r.data),
   });
 
-  const totalExtensions = extensions?.total || 0;
-  const totalScans = scans?.total || 0;
-  const completedScans = scans?.scans?.filter(s => s.status === 'completed').length || 0;
-  const highRiskScans = scans?.scans?.filter(s => 
+  const totalExtensions = extensionsData?.total || 0;
+  const totalScans = scansData?.total || 0;
+  const completedScans = scansData?.scans?.filter((s: Scan) => s.status === 'completed').length || 0;
+  const highRiskScans = scansData?.scans?.filter((s: Scan) => 
     s.risk_scores && s.risk_scores.overall_score >= 50
   ).length || 0;
 
@@ -151,14 +149,14 @@ export function Dashboard() {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
-              {scans?.scans?.length === 0 ? (
+              {scansData?.scans?.length === 0 ? (
                 <tr>
                   <td colSpan={5} className="px-4 py-8 text-center text-gray-500">
                     No scans yet. <a href="/scan" className="text-primary-600 hover:underline">Create your first scan</a>
                   </td>
                 </tr>
               ) : (
-                scans?.scans?.map(scan => (
+                scansData?.scans?.map((scan: Scan) => (
                   <RecentScanRow key={scan.id} scan={scan} extension={scan.extension} />
                 ))
               )}

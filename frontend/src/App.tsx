@@ -14,6 +14,7 @@ export function App() {
         <Route index element={<Navigate to="/dashboard" replace />} />
         <Route path="dashboard" element={<Dashboard />} />
         <Route path="scan" element={<ScanPage />} />
+        <Route path="scans" element={<ExtensionsList />} />
         <Route path="scans/:id" element={<ScanDetail />} />
         <Route path="extensions" element={<ExtensionsList />} />
         <Route path="extensions/:id" element={<ExtensionDetail />} />
@@ -23,3 +24,5 @@ export function App() {
     </Routes>
   );
 }
+
+export default App;

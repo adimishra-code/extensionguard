@@ -1,5 +1,5 @@
 import { Outlet, NavLink, useLocation } from 'react-router-dom';
-import { Shield, Search, List, Settings, Menu, X, ChevronRight } from 'lucide-react';
+import { Shield, Search, List, Settings, Menu, X } from 'lucide-react';
 import { useState } from 'react';
 import { cn } from '../lib/utils';
 
