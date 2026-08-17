@@ -1,0 +1,31 @@
+{
+  "name": "privacy_leak",
+  "version": "1.0.0",
+  "description": "Rules for identifying sensitive personal data harvesting and exfiltration",
+  "rules": [
+    {
+      "id": "EXT-PRIV-001",
+      "name": "cookie_access",
+      "category": "data_access",
+      "severity": "medium",
+      "pattern": "document\\.cookie",
+      "description": "Direct access to session and authentication cookies in DOM context."
+    },
+    {
+      "id": "EXT-PRIV-002",
+      "name": "clipboard_snooping",
+      "category": "data_access",
+      "severity": "high",
+      "pattern": "navigator\\.clipboard\\.readText",
+      "description": "Silent clipboard reads can intercept passwords, tokens, and sensitive copies."
+    },
+    {
+      "id": "EXT-PRIV-003",
+      "name": "geolocation_tracking",
+      "category": "data_access",
+      "severity": "high",
+      "pattern": "navigator\\.geolocation\\.getCurrentPosition",
+      "description": "Requests fine-grained physical location coordinates from the user browser."
+    }
+  ]
+}

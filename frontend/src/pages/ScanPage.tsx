@@ -160,7 +160,7 @@ export function ScanPage() {
           <div className="card p-4 border-danger-200 bg-danger-50">
             <div className="flex items-center gap-3 text-danger-700">
               <AlertCircle className="h-5 w-5 flex-shrink-0" />
-              <p>{error instanceof Error ? error.message : 'Failed to create scan'}</p>
+              <p>{(error as any)?.response?.data?.error || (error instanceof Error ? error.message : 'Failed to create scan')}</p>
             </div>
           </div>
         )}

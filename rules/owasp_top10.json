@@ -1,0 +1,39 @@
+{
+  "name": "owasp_top10",
+  "version": "1.0.0",
+  "description": "OWASP Top 10 Security Risks for Browser Extensions",
+  "rules": [
+    {
+      "id": "EXT-OWASP-001",
+      "name": "eval_usage",
+      "category": "remote_code_execution",
+      "severity": "high",
+      "pattern": "eval\\s*\\(",
+      "description": "Dynamic code evaluation via eval() bypasses static validation and CSP."
+    },
+    {
+      "id": "EXT-OWASP-002",
+      "name": "function_constructor",
+      "category": "remote_code_execution",
+      "severity": "high",
+      "pattern": "new\\s+Function\\s*\\(",
+      "description": "Function constructor used for dynamic string execution."
+    },
+    {
+      "id": "EXT-OWASP-003",
+      "name": "unsafe_inner_html",
+      "category": "remote_code_execution",
+      "severity": "medium",
+      "pattern": "innerHTML\\s*=",
+      "description": "Direct innerHTML assignment introduces Cross-Site Scripting (XSS) risks."
+    },
+    {
+      "id": "EXT-OWASP-004",
+      "name": "unrestricted_debugger",
+      "category": "permission_risk",
+      "severity": "critical",
+      "pattern": "chrome\\.debugger",
+      "description": "Chrome debugger API allows inspecting and executing arbitrary code in any tab."
+    }
+  ]
+}

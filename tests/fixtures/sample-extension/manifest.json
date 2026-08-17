@@ -1,0 +1,24 @@
+{
+  "manifest_version": 3,
+  "name": "Vulnerable Demo Extension",
+  "version": "1.0.0",
+  "description": "Synthetic extension for security analysis testing",
+  "permissions": [
+    "cookies",
+    "storage",
+    "webRequest"
+  ],
+  "host_permissions": [
+    "*://mail.google.com/*",
+    "*://*.bankofamerica.com/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": ["*://mail.google.com/*"],
+      "js": ["content.js"]
+    }
+  ]
+}

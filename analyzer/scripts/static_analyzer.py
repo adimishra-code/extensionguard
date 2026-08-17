@@ -204,6 +204,7 @@ def main():
     
     for root, dirs, files in os.walk(extension_path):
         dirs[:] = [d for d in dirs if d not in ('.git', 'node_modules', '__pycache__', '.venv', 'dist', 'build')]
+        for file in files:
             if file.endswith(('.js', '.ts', '.jsx', '.tsx', '.mjs', '.cjs')):
                 filepath = os.path.join(root, file)
                 rel_path = os.path.relpath(filepath, extension_path).replace('\\', '/')
