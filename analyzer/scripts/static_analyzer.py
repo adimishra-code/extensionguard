@@ -3,7 +3,11 @@ import os
 import sys
 import ast
 import re
+import datetime
 from pathlib import Path
+
+def get_iso_timestamp():
+    return datetime.datetime.now(datetime.timezone.utc).isoformat()
 
 def analyze_file(filepath, scan_id):
     findings = []
@@ -30,6 +34,13 @@ def analyze_file(filepath, scan_id):
         ('chrome.webRequest', 'DANGEROUS_API', 'high'),
         ('chrome.debugger', 'DANGEROUS_API', 'critical'),
         ('chrome.management', 'DANGEROUS_API', 'high'),
+        ('chrome.declarativeNetRequest', 'DANGEROUS_API', 'high'),
+        ('chrome.nativeMessaging', 'DANGEROUS_API', 'high'),
+        ('chrome.webNavigation', 'DANGEROUS_API', 'medium'),
+        ('chrome.history', 'DATA_ACCESS', 'high'),
+        ('chrome.bookmarks', 'DATA_ACCESS', 'medium'),
+        ('chrome.downloads', 'DATA_ACCESS', 'medium'),
+        ('chrome.identity', 'DATA_ACCESS', 'high'),
         ('clipboard.readText', 'DANGEROUS_API', 'high'),
         ('clipboard.read', 'DANGEROUS_API', 'high'),
         ('document.cookie', 'DATA_ACCESS', 'medium'),
@@ -40,10 +51,12 @@ def analyze_file(filepath, scan_id):
         ('XMLHttpRequest', 'NETWORK_EXFILTRATION', 'medium'),
         ('navigator.sendBeacon', 'NETWORK_EXFILTRATION', 'medium'),
         ('WebSocket', 'NETWORK_EXFILTRATION', 'medium'),
+        ('navigator.geolocation', 'DATA_ACCESS', 'high'),
         ('chrome.runtime.sendMessage', 'DATA_ACCESS', 'medium'),
         ('chrome.runtime.postMessage', 'DATA_ACCESS', 'medium'),
         ('eval', 'REMOTE_CODE_EXECUTION', 'high'),
         ('Function', 'REMOTE_CODE_EXECUTION', 'high'),
+        ('importScripts', 'REMOTE_CODE_EXECUTION', 'high'),
         ('setTimeout', 'REMOTE_CODE_EXECUTION', 'medium'),
         ('setInterval', 'REMOTE_CODE_EXECUTION', 'medium'),
         ('document.write', 'REMOTE_CODE_EXECUTION', 'medium'),
@@ -92,7 +105,7 @@ def analyze_file(filepath, scan_id):
                     'description': f'Dangerous API call: {api}',
                     'raw_data': {'api': api, 'file': filepath, 'line': i, 'category': category.lower()},
                     'confidence': 'likely',
-                    'created_at': '2024-01-01T00:00:00Z'
+                    'created_at': get_iso_timestamp()
                 })
         
         for pattern, name, severity in obfuscation_patterns:
@@ -120,7 +133,7 @@ def analyze_file(filepath, scan_id):
                     'description': f'Obfuscation indicator: {name}',
                     'raw_data': {'pattern': name, 'file': filepath, 'line': i},
                     'confidence': 'potential',
-                    'created_at': '2024-01-01T00:00:00Z'
+                    'created_at': get_iso_timestamp()
                 })
     
     urls = re.findall(r'(?:https?://|wss?://)[^\s"\'`<>]+', content)
@@ -144,11 +157,17 @@ def analyze_file(filepath, scan_id):
         
         if suspicious:
             eid = next_eid()
+            url_line = 1
+            for l_idx, l_str in enumerate(lines, 1):
+                if url in l_str:
+                    url_line = l_idx
+                    break
+
             findings.append({
                 'id': f'CF-{scan_id[:8]}-{len(findings)+1:03d}',
                 'scan_id': scan_id,
                 'file_path': filepath,
-                'line': 1,
+                'line': url_line,
                 'column': 1,
                 'api': url,
                 'pattern': 'suspicious_url',
@@ -164,14 +183,18 @@ def analyze_file(filepath, scan_id):
                 'type': 'static_analysis',
                 'source': 'network',
                 'description': f'Suspicious URL in code: {url}',
-                'raw_data': {'url': url, 'file': filepath},
+                'raw_data': {'url': url, 'file': filepath, 'line': url_line},
                 'confidence': 'potential',
-                'created_at': '2024-01-01T00:00:00Z'
+                'created_at': get_iso_timestamp()
             })
     
     return findings, evidence, []
 
 def main():
+    if len(sys.argv) < 3:
+        print(json.dumps({'codeFindings': [], 'dataFlows': [], 'evidences': [], 'errors': ['Usage: static_analyzer.py <scan_id> <extension_path>']}))
+        return
+
     scan_id = sys.argv[1]
     extension_path = sys.argv[2]
     

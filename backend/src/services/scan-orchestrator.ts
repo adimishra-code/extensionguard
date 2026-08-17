@@ -316,6 +316,45 @@ export async function processScanJob(jobData: ScanJobData): Promise<void> {
       });
     }
 
+    for (const ev of sandboxAnalysis.evidences) {
+      if (ev.source === 'content_script') {
+        findings.push({
+          id: uuidv4(),
+          scan_id: scanId,
+          category: 'runtime_behavior',
+          severity: 'high',
+          confidence: 'confirmed',
+          title: `DOM tampering on ${(ev.raw_data as any)?.site || 'synthetic site'}`,
+          description: ev.description,
+          technical_details: `Content script modified web page DOM during execution. Raw data: ${JSON.stringify(ev.raw_data)}`,
+          recommendation: 'Audit content script selectors and ensure DOM modifications are authorized.',
+          limitations: 'Observed dynamically in isolated headless Chromium sandbox.',
+          evidence_ids: [ev.id],
+          created_at: new Date().toISOString(),
+        });
+      }
+    }
+
+    for (const net of sandboxAnalysis.networkEvents) {
+      if (net.is_third_party && (net.risk_level === 'high' || net.risk_level === 'critical')) {
+        findings.push({
+          id: uuidv4(),
+          scan_id: scanId,
+          category: 'network_exfiltration',
+          severity: net.risk_level,
+          confidence: 'confirmed',
+          title: `Outbound third-party request to ${net.domain}`,
+          description: `Extension initiated network request to ${net.url}`,
+          technical_details: `Dynamic request method ${net.method} to ${net.url}. Size: ${net.request_size} bytes.`,
+          recommendation: 'Verify if this outbound third-party domain is an authorized endpoint.',
+          limitations: 'Dynamic network capture during simulated runtime interaction.',
+          evidence_ids: [net.id],
+          affected_api: net.domain,
+          created_at: new Date().toISOString(),
+        });
+      }
+    }
+
     const mappedNetworkEvents: NetworkEvent[] = [];
     for (const cf of staticAnalysis.codeFindings) {
       const cat = mapCategory(cf.category);
