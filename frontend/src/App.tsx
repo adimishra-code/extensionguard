@@ -1,6 +1,7 @@
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { Layout } from './components/Layout';
 import { Dashboard } from './pages/Dashboard';
+import { LiveMonitoring } from './pages/LiveMonitoring';
 import { ScanPage } from './pages/ScanPage';
 import { ScanDetail } from './pages/ScanDetail';
 import { ExtensionsList } from './pages/ExtensionsList';
@@ -13,6 +14,7 @@ export function App() {
       <Route path="/" element={<Layout />}>
         <Route index element={<Navigate to="/dashboard" replace />} />
         <Route path="dashboard" element={<Dashboard />} />
+        <Route path="live" element={<LiveMonitoring />} />
         <Route path="scan" element={<ScanPage />} />
         <Route path="scans" element={<ExtensionsList />} />
         <Route path="scans/:id" element={<ScanDetail />} />
