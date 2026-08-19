@@ -15,6 +15,8 @@ import { monitorRoutes } from './routes/monitor';
 import { differentialRoutes } from './routes/differential';
 import { threatIntelRoutes } from './routes/threat-intel';
 import { cwsRoutes } from './routes/cws';
+import { networkRoutes } from './routes/network';
+import { alertRoutes } from './routes/alerts';
 import { websocketPlugin } from './plugins/websocket';
 
 const fastify = Fastify({
@@ -43,6 +45,8 @@ fastify.register(monitorRoutes);
 fastify.register(differentialRoutes);
 fastify.register(threatIntelRoutes);
 fastify.register(cwsRoutes);
+fastify.register(networkRoutes);
+fastify.register(alertRoutes);
 fastify.register(scanRoutes);
 
 let scanWorker: ReturnType<typeof createScanWorker> | null = null;
