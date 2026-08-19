@@ -12,6 +12,7 @@ import { processScanJob } from './services/scan-orchestrator';
 import { scanRoutes } from './routes/scan';
 import { authRoutes } from './routes/auth';
 import { monitorRoutes } from './routes/monitor';
+import { differentialRoutes } from './routes/differential';
 import { websocketPlugin } from './plugins/websocket';
 
 const fastify = Fastify({
@@ -37,6 +38,7 @@ fastify.register(rateLimit, {
 fastify.register(websocketPlugin);
 fastify.register(authRoutes);
 fastify.register(monitorRoutes);
+fastify.register(differentialRoutes);
 fastify.register(scanRoutes);
 
 let scanWorker: ReturnType<typeof createScanWorker> | null = null;
