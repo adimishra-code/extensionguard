@@ -72,12 +72,12 @@ model Extension {
 }
 
 model Scan {
-  id                String      @id @default(cuid())
+  id                String             @id @default(cuid())
   extension_id      String
-  extension         Extension   @relation(fields: [extension_id], references: [id], onDelete: Cascade)
+  extension         Extension          @relation(fields: [extension_id], references: [id], onDelete: Cascade)
   type              ScanType
-  status            ScanStatus  @default(pending)
-  started_at        DateTime    @default(now())
+  status            ScanStatus         @default(pending)
+  started_at        DateTime           @default(now())
   completed_at      DateTime?
   error             String?
   config_json       Json
@@ -93,6 +93,7 @@ model Scan {
   data_flows        DataFlowPath[]
   permission_risks  PermissionRisk[]
   risk_scores       RiskScores?
+  extension_versions ExtensionVersion[]
 
   @@index([extension_id])
   @@index([status])
@@ -223,4 +224,243 @@ model PermissionRisk {
   evidence_ids    String[]
 
   @@index([scan_id])
+}
+
+// ============================================================================
+// Extension Guard v2.0 - Real-Time Monitoring & Supply Chain Tracking
+// ============================================================================
+
+enum ReportStatus {
+  pending
+  verified
+  rejected
+  investigating
+}
+
+enum ThreatType {
+  extension
+  domain
+  code_pattern
+  maintainer
+  supply_chain
+}
+
+enum EventType {
+  version_released
+  permission_added
+  permission_removed
+  maintainer_changed
+  ownership_transfer
+  delisted
+  reinstated
+  malware_detected
+}
+
+// User accounts for authentication
+model User {
+  id                String            @id @default(cuid())
+  email             String            @unique
+  password_hash     String
+  api_key           String            @unique @default(cuid())
+  created_at        DateTime          @default(now())
+  updated_at        DateTime          @updatedAt
+  last_login_at     DateTime?
+  sessions          MonitorSession[]
+  community_reports CommunityReport[]
+
+  @@index([email])
+  @@index([api_key])
+}
+
+// Active WebSocket monitoring sessions
+model MonitorSession {
+  id              String    @id @default(cuid())
+  user_id         String
+  user            User      @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  client_id       String    @unique
+  user_agent      String
+  ip_address      String?
+  connected_at    DateTime  @default(now())
+  last_heartbeat  DateTime  @default(now())
+  disconnected_at DateTime?
+
+  @@index([user_id])
+  @@index([client_id])
+  @@index([connected_at])
+}
+
+// Extension version history from Chrome Web Store
+model ExtensionVersion {
+  id                  String            @id @default(cuid())
+  extension_id        String            // Chrome Web Store ID (e.g., "nmmhkkegccagdldgiimedpiccmgmieda")
+  version             String
+  name                String
+  description         String?
+  permissions         Json              // Array of permissions
+  host_permissions    Json              // Host permissions array
+  manifest            Json              // Full manifest.json
+  release_date        DateTime?
+  detected_at         DateTime          @default(now())
+  scan_id             String?           // Link to scan if available
+  scan                Scan?             @relation(fields: [scan_id], references: [id])
+  diff_from_previous  Json?             // Differential analysis results
+  supply_chain_events SupplyChainEvent[]
+
+  @@unique([extension_id, version])
+  @@index([extension_id])
+  @@index([release_date])
+  @@index([detected_at])
+}
+
+// Supply chain events (updates, permission changes, etc.)
+model SupplyChainEvent {
+  id                   String           @id @default(cuid())
+  extension_version_id String
+  extension_version    ExtensionVersion @relation(fields: [extension_version_id], references: [id], onDelete: Cascade)
+  extension_id         String           // Denormalized for querying
+  event_type           EventType
+  severity             Severity
+  description          String
+  metadata             Json?            // Additional event-specific data
+  detected_at          DateTime         @default(now())
+
+  @@index([extension_id])
+  @@index([event_type])
+  @@index([severity])
+  @@index([detected_at])
+}
+
+// Known threats and malicious patterns
+model ThreatIntelligence {
+  id              String    @id @default(cuid())
+  extension_id    String?   // Specific extension (if applicable)
+  pattern         String?   // Malicious code pattern (regex)
+  domain          String?   // Malicious domain
+  type            ThreatType
+  severity        Severity
+  description     String
+  source          String    // 'community', 'automated', 'verified', 'vendor'
+  confidence      Float     // 0.0 - 1.0
+  reported_at     DateTime  @default(now())
+  verified_at     DateTime?
+  verified_by     String?
+  metadata        Json?     // Additional context, IOCs, etc.
+  active          Boolean   @default(true)
+  false_positive  Boolean   @default(false)
+
+  @@index([extension_id])
+  @@index([type])
+  @@index([severity])
+  @@index([active])
+  @@index([domain])
+}
+
+// Community-reported threats
+model CommunityReport {
+  id               String       @id @default(cuid())
+  user_id          String
+  user             User         @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  extension_id     String
+  extension_name   String
+  extension_version String?
+  report_type      String       // 'malicious', 'suspicious', 'privacy_violation', 'data_theft'
+  description      String
+  evidence         Json?        // Screenshots, logs, network traces
+  status           ReportStatus @default(pending)
+  reported_at      DateTime     @default(now())
+  reviewed_at      DateTime?
+  reviewed_by      String?
+  review_notes     String?
+  threat_intel_id  String?      // Link to ThreatIntelligence if verified
+
+  @@index([extension_id])
+  @@index([status])
+  @@index([user_id])
+  @@index([reported_at])
+}
+
+// Real-time monitoring events (optional - could use time-series DB instead)
+model MonitoringEvent {
+  id           String   @id @default(cuid())
+  session_id   String   // MonitorSession.client_id
+  extension_id String
+  event_type   String   // 'network_request', 'permission_change', 'storage_access', etc.
+  data         Json
+  timestamp    DateTime @default(now())
+
+  @@index([session_id])
+  @@index([extension_id])
+  @@index([timestamp])
+  @@index([event_type])
+}
+
+// Chrome Web Store metadata cache
+model CWSMetadata {
+  id                 String    @id @default(cuid())
+  extension_id       String    @unique
+  name               String
+  author             String?
+  author_email       String?
+  category           String?
+  rating             Float?
+  rating_count       Int?
+  user_count         Int?
+  current_version    String?
+  last_updated       DateTime?
+  homepage_url       String?
+  support_url        String?
+  privacy_policy_url String?
+  featured           Boolean   @default(false)
+  delisted           Boolean   @default(false)
+  metadata           Json?     // Raw CWS data
+  last_scraped_at    DateTime  @default(now())
+  created_at         DateTime  @default(now())
+
+  @@index([extension_id])
+  @@index([last_scraped_at])
+  @@index([delisted])
+}
+
+// Differential analysis results
+model DifferentialAnalysis {
+  id                       String   @id @default(cuid())
+  extension_id             String
+  old_version              String
+  new_version              String
+  permissions_added        Json     // Array of added permissions
+  permissions_removed      Json     // Array of removed permissions
+  host_permissions_added   Json
+  host_permissions_removed Json
+  manifest_changes         Json     // Key changes in manifest
+  code_changes_summary     String?
+  risk_delta               Int      // Change in risk score (-100 to +100)
+  severity                 Severity
+  findings_added           Int      @default(0)
+  findings_removed         Int      @default(0)
+  findings_comparison      Json?    // Detailed findings diff
+  analysis_date            DateTime @default(now())
+
+  @@unique([extension_id, old_version, new_version])
+  @@index([extension_id])
+  @@index([severity])
+  @@index([analysis_date])
+}
+
+// Monitored extensions registry (which extensions users are tracking)
+model MonitoredExtension {
+  id                String   @id @default(cuid())
+  user_id           String
+  extension_id      String
+  extension_name    String
+  current_version   String
+  auto_scan         Boolean  @default(true)
+  alert_on_update   Boolean  @default(true)
+  alert_threshold   Severity @default(medium) // Only alert if severity >= threshold
+  added_at          DateTime @default(now())
+  last_checked_at   DateTime @default(now())
+
+  @@unique([user_id, extension_id])
+  @@index([user_id])
+  @@index([extension_id])
+  @@index([last_checked_at])
 }
