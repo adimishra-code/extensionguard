@@ -10,6 +10,7 @@ import { connectDatabase, disconnectDatabase, prisma } from './utils/prisma';
 import { redis, scanQueue, createScanWorker, ScanJobData } from './queue';
 import { processScanJob } from './services/scan-orchestrator';
 import { scanRoutes } from './routes/scan';
+import { authRoutes } from './routes/auth';
 
 const fastify = Fastify({
   logger: false,
@@ -31,6 +32,7 @@ fastify.register(rateLimit, {
   timeWindow: '1 minute',
 });
 
+fastify.register(authRoutes);
 fastify.register(scanRoutes);
 
 let scanWorker: ReturnType<typeof createScanWorker> | null = null;
