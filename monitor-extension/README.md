@@ -4,12 +4,16 @@ Real-time security monitoring Chrome extension for Extension Guard v2.0.
 
 ## Features
 
-- 🔍 Real-time monitoring of installed extensions
-- 📊 Live risk scoring and security alerts
-- 🔄 Automatic detection of extension updates
-- 🚨 Instant notifications for critical security issues
-- 🌐 Cloud sync with Extension Guard backend
-- 📈 Historical tracking of extension changes
+- 🔍 **Real-time monitoring** of installed extensions
+- 📊 **Live risk scoring** with local and cloud-based analysis
+- 🔄 **Automatic detection** of extension updates and version changes
+- 🚨 **Instant notifications** for critical security issues
+- 🌐 **Cloud sync** with Extension Guard backend via WebSocket
+- 📈 **Historical tracking** of extension changes and supply chain events
+- 🛡️ **Local risk analysis** works offline without backend
+- ⚡ **Supply chain attack detection** via differential analysis
+- 🎯 **Threat intelligence** integration for known malicious extensions
+- 🔔 **Smart alerts** with configurable severity levels
 
 ## Installation
 
