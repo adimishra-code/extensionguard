@@ -11,6 +11,8 @@ import { redis, scanQueue, createScanWorker, ScanJobData } from './queue';
 import { processScanJob } from './services/scan-orchestrator';
 import { scanRoutes } from './routes/scan';
 import { authRoutes } from './routes/auth';
+import { monitorRoutes } from './routes/monitor';
+import { websocketPlugin } from './plugins/websocket';
 
 const fastify = Fastify({
   logger: false,
@@ -32,7 +34,9 @@ fastify.register(rateLimit, {
   timeWindow: '1 minute',
 });
 
+fastify.register(websocketPlugin);
 fastify.register(authRoutes);
+fastify.register(monitorRoutes);
 fastify.register(scanRoutes);
 
 let scanWorker: ReturnType<typeof createScanWorker> | null = null;
