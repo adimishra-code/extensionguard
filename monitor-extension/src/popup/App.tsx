@@ -1,8 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import { Shield, AlertTriangle, CheckCircle, XCircle, Settings, RefreshCw, Bell } from 'lucide-react';
-import type { Extension, RiskScore, Alert } from '@/types';
-import { RISK_THRESHOLDS } from '@/constants';
+import { Shield, AlertTriangle, CheckCircle, XCircle, Settings, RefreshCw, Bell, ExternalLink } from 'lucide-react';
+import type { Extension, RiskScore, Alert, Config } from '@/types';
+import { RISK_THRESHOLDS, DEFAULT_CONFIG } from '@/constants';
 import './styles.css';
 
 interface ExtensionWithRisk extends Extension {
@@ -12,7 +12,9 @@ interface ExtensionWithRisk extends Extension {
 function App() {
   const [extensions, setExtensions] = useState<ExtensionWithRisk[]>([]);
   const [alerts, setAlerts] = useState<Alert[]>([]);
+  const [config, setConfig] = useState<Config>(DEFAULT_CONFIG);
   const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
   const [view, setView] = useState<'extensions' | 'alerts' | 'settings'>('extensions');
 
   useEffect(() => {
@@ -22,20 +24,50 @@ function App() {
   const loadData = async () => {
     setLoading(true);
 
-    // Get extensions
-    const extensionsResponse = await chrome.runtime.sendMessage({ type: 'get-extensions' });
-    const riskScores = await chrome.runtime.sendMessage({ type: 'get-risk-scores' });
-    const alertsResponse = await chrome.runtime.sendMessage({ type: 'get-alerts' });
+    try {
+      // Get extensions
+      const extensionsResponse = await chrome.runtime.sendMessage({ type: 'get-extensions' });
+      const riskScores = await chrome.runtime.sendMessage({ type: 'get-risk-scores' });
+      const alertsResponse = await chrome.runtime.sendMessage({ type: 'get-alerts' });
 
-    // Merge risk scores with extensions
-    const extensionsWithRisk = extensionsResponse.map((ext: Extension) => ({
-      ...ext,
-      riskScore: riskScores[ext.id],
-    }));
+      // Load config
+      const configResult = await chrome.storage.local.get('config');
+      if (configResult.config) {
+        setConfig(configResult.config);
+      }
 
-    setExtensions(extensionsWithRisk);
-    setAlerts(alertsResponse);
-    setLoading(false);
+      // Merge risk scores with extensions
+      const extensionsWithRisk = extensionsResponse.map((ext: Extension) => ({
+        ...ext,
+        riskScore: riskScores[ext.id],
+      }));
+
+      // Sort by risk score (highest first)
+      extensionsWithRisk.sort((a: ExtensionWithRisk, b: ExtensionWithRisk) => {
+        const scoreA = a.riskScore?.score || 0;
+        const scoreB = b.riskScore?.score || 0;
+        return scoreB - scoreA;
+      });
+
+      setExtensions(extensionsWithRisk);
+      setAlerts(alertsResponse);
+    } catch (error) {
+      console.error('Failed to load data:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSaveSettings = async () => {
+    setSaving(true);
+    try {
+      await chrome.runtime.sendMessage({ type: 'update-config', config });
+      // Show success message briefly
+      setTimeout(() => setSaving(false), 1000);
+    } catch (error) {
+      console.error('Failed to save settings:', error);
+      setSaving(false);
+    }
   };
 
   const getSeverityColor = (severity?: string) => {
@@ -279,29 +311,82 @@ function App() {
             <h2 className="font-bold text-lg mb-4">Settings</h2>
             <div className="space-y-4">
               <div>
-                <label className="block text-sm font-medium mb-1">API Key</label>
+                <label className="block text-sm font-medium mb-1">API URL</label>
                 <input
-                  type="password"
-                  placeholder="Enter your API key"
+                  type="text"
+                  value={config.apiUrl}
+                  onChange={(e) => setConfig({ ...config, apiUrl: e.target.value })}
+                  placeholder="https://api.extensionguard.dev"
                   className="w-full px-3 py-2 border rounded text-sm"
                 />
               </div>
               <div>
+                <label className="block text-sm font-medium mb-1">API Key</label>
+                <input
+                  type="password"
+                  value={config.apiKey || ''}
+                  onChange={(e) => setConfig({ ...config, apiKey: e.target.value })}
+                  placeholder="eg_abc123..."
+                  className="w-full px-3 py-2 border rounded text-sm"
+                />
+                <p className="text-xs text-gray-500 mt-1">
+                  Get your API key from{' '}
+                  <a
+                    href="https://extensionguard.dev/dashboard"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-blue-600 hover:underline inline-flex items-center gap-1"
+                  >
+                    dashboard
+                    <ExternalLink className="w-3 h-3" />
+                  </a>
+                </p>
+              </div>
+              <div>
                 <label className="flex items-center gap-2">
-                  <input type="checkbox" className="rounded" defaultChecked />
+                  <input
+                    type="checkbox"
+                    checked={config.syncEnabled}
+                    onChange={(e) => setConfig({ ...config, syncEnabled: e.target.checked })}
+                    className="rounded"
+                  />
                   <span className="text-sm">Enable cloud sync</span>
                 </label>
+                <p className="text-xs text-gray-500 ml-6">
+                  Connect to backend for advanced threat intelligence
+                </p>
               </div>
               <div>
                 <label className="block text-sm font-medium mb-1">Alert Level</label>
-                <select className="w-full px-3 py-2 border rounded text-sm">
+                <select
+                  value={config.alertLevel}
+                  onChange={(e) => setConfig({ ...config, alertLevel: e.target.value as any })}
+                  className="w-full px-3 py-2 border rounded text-sm"
+                >
                   <option value="all">All alerts</option>
                   <option value="high">High and Critical only</option>
                   <option value="critical">Critical only</option>
                 </select>
               </div>
-              <button className="w-full bg-blue-600 text-white py-2 rounded hover:bg-blue-700">
-                Save Settings
+              <div>
+                <label className="block text-sm font-medium mb-1">
+                  Scan Frequency (minutes)
+                </label>
+                <input
+                  type="number"
+                  value={config.scanFrequency}
+                  onChange={(e) => setConfig({ ...config, scanFrequency: parseInt(e.target.value) })}
+                  min="5"
+                  max="1440"
+                  className="w-full px-3 py-2 border rounded text-sm"
+                />
+              </div>
+              <button
+                onClick={handleSaveSettings}
+                disabled={saving}
+                className="w-full bg-blue-600 text-white py-2 rounded hover:bg-blue-700 disabled:bg-blue-400"
+              >
+                {saving ? 'Saved!' : 'Save Settings'}
               </button>
             </div>
           </div>
