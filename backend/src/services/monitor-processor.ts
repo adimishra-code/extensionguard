@@ -1,6 +1,7 @@
 import { logger } from '../utils/logger';
 import { prisma } from '../utils/prisma';
 import { wsManager, MonitoringEvent, ServerMessage } from './websocket-manager';
+import { threatIntel } from './threat-intelligence';
 
 export class MonitorProcessor {
   /**
