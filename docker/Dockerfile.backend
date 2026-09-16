@@ -1,35 +1,72 @@
-FROM node:20-slim
+FROM node:20-slim AS deps
 
-# Install Python 3 and build dependencies
+# Install system dependencies needed for Playwright and bcrypt native bindings
 RUN apt-get update && apt-get install -y --no-install-recommends \
     python3 \
     python3-pip \
     openssl \
     curl \
+    ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
-# Copy root workspace configurations
+# Copy workspace manifests first for layer caching
 COPY package.json package-lock.json ./
 COPY shared/package.json ./shared/
 COPY backend/package.json ./backend/
 COPY frontend/package.json ./frontend/
 COPY backend/prisma ./backend/prisma/
 
-# Install dependencies and generate prisma client
-RUN npm ci
-RUN npm run build --workspace=shared
-RUN npx prisma generate --schema=backend/prisma/schema.prisma
+# Install all workspace dependencies
+RUN npm ci --include=dev
 
-# Copy source files
+# ─── Build stage ──────────────────────────────────────────────────────────────
+FROM deps AS builder
+
 COPY shared ./shared
 COPY backend ./backend
 COPY analyzer ./analyzer
 
-# Build backend TypeScript
+# Build shared types first, then backend
+RUN npm run build --workspace=shared
+RUN npx prisma generate --schema=backend/prisma/schema.prisma
 RUN npm run build --workspace=backend
 
+# ─── Production stage ─────────────────────────────────────────────────────────
+FROM node:20-slim AS production
+
+ENV NODE_ENV=production
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    openssl \
+    curl \
+    ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# Copy workspace manifests
+COPY package.json package-lock.json ./
+COPY shared/package.json ./shared/
+COPY backend/package.json ./backend/
+COPY frontend/package.json ./frontend/
+
+# Install production dependencies only
+RUN npm ci --omit=dev
+
+# Copy built artifacts from builder
+COPY --from=builder /app/shared/dist ./shared/dist
+COPY --from=builder /app/backend/dist ./backend/dist
+COPY --from=builder /app/backend/prisma ./backend/prisma
+COPY --from=builder /app/backend/node_modules/.prisma ./backend/node_modules/.prisma
+
+# Copy analyzer scripts
+COPY analyzer ./analyzer
+
 EXPOSE 3001
+
+HEALTHCHECK --interval=10s --timeout=5s --retries=5 --start-period=20s \
+  CMD curl -f http://localhost:3001/health || exit 1
 
 CMD ["node", "backend/dist/index.js"]
