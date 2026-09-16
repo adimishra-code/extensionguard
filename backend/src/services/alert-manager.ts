@@ -54,7 +54,7 @@ export class AlertManager {
   ): Promise<void> {
     try {
       // Create alert record
-      const alert = await prisma.alert.create({
+      await prisma.alert.create({
         data: {
           user_id: userId,
           extension_id: extensionId,

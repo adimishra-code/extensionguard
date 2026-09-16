@@ -1,8 +1,8 @@
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { Shield, AlertTriangle, CheckCircle, XCircle, Settings, RefreshCw, Bell, ExternalLink } from 'lucide-react';
 import type { Extension, RiskScore, Alert, Config } from '@/types';
-import { RISK_THRESHOLDS, DEFAULT_CONFIG } from '@/constants';
+import { DEFAULT_CONFIG } from '@/constants';
 import './styles.css';
 
 interface ExtensionWithRisk extends Extension {
@@ -77,16 +77,6 @@ function App() {
       case 'medium': return 'text-yellow-600';
       case 'low': return 'text-green-600';
       default: return 'text-gray-600';
-    }
-  };
-
-  const getSeverityBg = (severity?: string) => {
-    switch (severity) {
-      case 'critical': return 'bg-red-100';
-      case 'high': return 'bg-orange-100';
-      case 'medium': return 'bg-yellow-100';
-      case 'low': return 'bg-green-100';
-      default: return 'bg-gray-100';
     }
   };
 

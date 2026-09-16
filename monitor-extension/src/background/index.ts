@@ -1,5 +1,4 @@
-import type { Config, MonitoringEvent, ServerMessage, Extension } from '@/types';
-import { DEFAULT_CONFIG } from '@/constants';
+import type { MonitoringEvent, ServerMessage, Extension } from '@/types';
 import { WebSocketManager } from './websocket';
 import { StorageManager } from './storage';
 
@@ -103,7 +102,7 @@ class BackgroundService {
 
   private setupMessageListeners() {
     // Listen for messages from popup
-    chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+    chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
       this.handleMessage(message).then(sendResponse);
       return true; // Async response
     });

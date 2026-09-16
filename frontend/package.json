@@ -1,6 +1,6 @@
 {
   "name": "@extension-guard/frontend",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -10,7 +10,7 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@extension-guard/shared": "^0.1.0",
+    "@extension-guard/shared": "^1.0.0",
     "@tanstack/react-query": "^5.24.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",

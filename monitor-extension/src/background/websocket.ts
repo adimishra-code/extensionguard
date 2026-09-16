@@ -30,7 +30,7 @@ export class WebSocketManager {
 
     try {
       const wsUrl = config.apiUrl.replace('http://', 'ws://').replace('https://', 'wss://');
-      const url = `${wsUrl}/monitor?token=${config.apiKey}`;
+      const url = `${wsUrl}/monitor?token=${encodeURIComponent(config.apiKey)}&clientId=${encodeURIComponent(this.clientId)}`;
 
       console.log('[WebSocket] Connecting to:', wsUrl);
 
@@ -103,7 +103,7 @@ export class WebSocketManager {
     });
   }
 
-  on(event: 'message', handler: MessageHandler): void {
+  on(_event: 'message', handler: MessageHandler): void {
     this.messageHandlers.push(handler);
   }
 

@@ -254,6 +254,7 @@ enum EventType {
   delisted
   reinstated
   malware_detected
+  suspicious_network
 }
 
 // User accounts for authentication
@@ -267,6 +268,8 @@ model User {
   last_login_at     DateTime?
   sessions          MonitorSession[]
   community_reports CommunityReport[]
+  alerts            Alert[]
+  monitored_extensions MonitoredExtension[]
 
   @@index([email])
   @@index([api_key])
@@ -314,10 +317,10 @@ model ExtensionVersion {
 
 // Supply chain events (updates, permission changes, etc.)
 model SupplyChainEvent {
-  id                   String           @id @default(cuid())
-  extension_version_id String
-  extension_version    ExtensionVersion @relation(fields: [extension_version_id], references: [id], onDelete: Cascade)
-  extension_id         String           // Denormalized for querying
+  id                   String            @id @default(cuid())
+  extension_version_id String?
+  extension_version    ExtensionVersion? @relation(fields: [extension_version_id], references: [id], onDelete: Cascade)
+  extension_id         String            // Denormalized for querying
   event_type           EventType
   severity             Severity
   description          String
@@ -450,6 +453,7 @@ model DifferentialAnalysis {
 model MonitoredExtension {
   id                String   @id @default(cuid())
   user_id           String
+  user              User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
   extension_id      String
   extension_name    String
   current_version   String
@@ -463,4 +467,40 @@ model MonitoredExtension {
   @@index([user_id])
   @@index([extension_id])
   @@index([last_checked_at])
+}
+
+// User alerts for extension risks and events
+model Alert {
+  id              String    @id @default(cuid())
+  user_id         String
+  user            User      @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  extension_id    String
+  severity        Severity
+  title           String
+  message         String
+  action_required Boolean   @default(false)
+  read            Boolean   @default(false)
+  created_at      DateTime  @default(now())
+
+  @@index([user_id])
+  @@index([extension_id])
+  @@index([created_at])
+  @@index([read])
+}
+
+// Network activity logs intercepted from extensions
+model NetworkLog {
+  id               String    @id @default(cuid())
+  extension_id     String
+  url              String
+  method           String
+  request_headers  Json?
+  response_headers Json?
+  status_code      Int?
+  blocked          Boolean   @default(false)
+  timestamp        DateTime  @default(now())
+
+  @@index([extension_id])
+  @@index([timestamp])
+  @@index([blocked])
 }

@@ -44,12 +44,12 @@ Extension Guard is a security platform designed to analyze browser extensions fo
 
 | Component | Technology | Purpose |
 |-----------|------------|---------|
-| **Frontend** | React 18, TypeScript, Vite, Tailwind CSS | Dashboard, scan management, report visualization |
-| **Backend** | Fastify, TypeScript, Prisma, BullMQ | API server, job queue, scan orchestration |
+| **Frontend** | React 18, TypeScript, Vite, Tailwind CSS | Dashboard, live monitoring, scan management, report visualization |
+| **Backend** | Fastify, TypeScript, Prisma, BullMQ, WebSockets | API server, job queue, scan orchestration, differential analysis |
 | **Static Analyzer** | Python (AST + regex) | Permission mapping, dangerous API detection, obfuscation |
 | **Runtime Sandbox** | Playwright + Chrome DevTools Protocol | Dynamic analysis in isolated browser contexts |
 | **Network Monitor** | DevTools Protocol interception | Request/response capture, third-party tracking detection |
-| **LLM Analyzer** | Pluggable (OpenAI, Anthropic, local) | Behavioral reasoning, purpose mismatch detection |
+| **Threat Intelligence** | Prisma, pattern matching | Community reports, malicious domain & pattern detection |
 
 ---
 
@@ -265,15 +265,18 @@ export const myRule: Rule = {
 };
 ```
 
-### Custom LLM Prompts
-Modify `backend/src/services/llm-analyzer.ts`:
+### Threat Intelligence Rules
+Add IOC patterns or malicious domains via `backend/src/services/threat-intelligence.ts`:
 ```typescript
-const customPrompt = `
-Analyze this extension for [specific concern]...
-Extension: {{name}}
-Findings: {{findings}}
-Network: {{network}}
-`;
+// Add known malicious domain or regex pattern
+await threatIntel.reportThreat({
+  type: 'domain',
+  domain: 'malicious-tracker.com',
+  severity: 'critical',
+  description: 'Known credential harvesting endpoint',
+  source: 'verified',
+  confidence: 0.95,
+});
 ```
 
 ---

@@ -1,7 +1,6 @@
 import { logger } from '../utils/logger';
 import { prisma } from '../utils/prisma';
 import { wsManager, MonitoringEvent, ServerMessage } from './websocket-manager';
-import { threatIntel } from './threat-intelligence';
 
 export class MonitorProcessor {
   /**
@@ -190,7 +189,7 @@ export class MonitorProcessor {
   /**
    * Handle heartbeat/ping
    */
-  private async handlePing(userId: string, clientId: string, event: MonitoringEvent): Promise<void> {
+  private async handlePing(_userId: string, clientId: string, _event: MonitoringEvent): Promise<void> {
     // Update heartbeat
     await wsManager.updateHeartbeat(clientId);
 

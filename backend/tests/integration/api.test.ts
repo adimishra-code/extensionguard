@@ -1,17 +1,32 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
 import Fastify, { FastifyInstance } from 'fastify';
+import cors from '@fastify/cors';
+import rateLimit from '@fastify/rate-limit';
+import bcrypt from 'bcrypt';
 import { monitorRoutes } from '../../src/routes/monitor';
 import { authRoutes } from '../../src/routes/auth';
+import { prisma } from '../../src/utils/prisma';
 
 describe('API Integration Tests', () => {
   let app: FastifyInstance;
   let authToken: string;
+  let hashedPassword: string;
 
   beforeAll(async () => {
-    // Create test Fastify instance
+    hashedPassword = await bcrypt.hash('Test123!@#', 10);
+
+    // Create test Fastify instance with plugins
     app = Fastify();
+    await app.register(cors, { origin: true });
+    await app.register(rateLimit, {
+      max: 10,
+      timeWindow: '1 minute',
+    });
     await app.register(authRoutes);
     await app.register(monitorRoutes);
+
+    app.get('/health', async () => ({ status: 'ok' }));
+
     await app.ready();
   });
 
@@ -19,18 +34,50 @@ describe('API Integration Tests', () => {
     await app.close();
   });
 
+  beforeEach(() => {
+    const mockUser = {
+      id: 'test-user-id',
+      email: 'test@example.com',
+      password_hash: hashedPassword,
+      api_key: 'eg_test_api_key_123',
+      created_at: new Date(),
+      updated_at: new Date(),
+      last_login_at: null,
+    };
+
+    (prisma.user.findUnique as any).mockImplementation(({ where }: any) => {
+      if (where.email === 'test@example.com' || where.id === 'test-user-id' || where.api_key === 'eg_test_api_key_123') {
+        return Promise.resolve(mockUser);
+      }
+      return Promise.resolve(null);
+    });
+
+    (prisma.user.create as any).mockResolvedValue(mockUser);
+
+    (prisma.monitoredExtension.upsert as any).mockResolvedValue({
+      id: 'monitored-1',
+      user_id: 'test-user-id',
+      extension_id: 'test-ext-1',
+      extension_name: 'Test Extension',
+      current_version: '1.0.0',
+    });
+  });
+
   describe('Authentication', () => {
     it('should register a new user', async () => {
+      // First check returns null (user not found), so registration proceeds
+      (prisma.user.findUnique as any).mockResolvedValueOnce(null);
+
       const response = await app.inject({
         method: 'POST',
         url: '/api/auth/register',
         payload: {
-          email: 'test@example.com',
+          email: 'newuser@example.com',
           password: 'Test123!@#',
         },
       });
 
-      expect(response.statusCode).toBe(200);
+      expect(response.statusCode).toBe(201);
       const body = JSON.parse(response.body);
       expect(body.token).toBeDefined();
       expect(body.user.email).toBe('test@example.com');
@@ -96,53 +143,44 @@ describe('API Integration Tests', () => {
     it('should require authentication', async () => {
       const response = await app.inject({
         method: 'POST',
-        url: '/api/monitor/sync',
+        url: '/api/monitor/extensions',
         payload: {
-          extensions: [],
+          extensionId: 'test-ext-1',
+          extensionName: 'Test Extension',
+          currentVersion: '1.0.0',
         },
       });
 
       expect(response.statusCode).toBe(401);
     });
 
-    it('should accept extension sync with valid token', async () => {
+    it('should accept extension registration with valid token', async () => {
       const response = await app.inject({
         method: 'POST',
-        url: '/api/monitor/sync',
+        url: '/api/monitor/extensions',
         headers: {
-          'x-api-key': authToken,
+          authorization: `Bearer ${authToken}`,
         },
         payload: {
-          extensions: [
-            {
-              id: 'test-ext-1',
-              name: 'Test Extension',
-              version: '1.0.0',
-              enabled: true,
-              permissions: ['storage'],
-              hostPermissions: [],
-            },
-          ],
+          extensionId: 'test-ext-1',
+          extensionName: 'Test Extension',
+          currentVersion: '1.0.0',
         },
       });
 
-      expect(response.statusCode).toBe(200);
+      expect(response.statusCode).toBe(201);
     });
 
     it('should validate extension data', async () => {
       const response = await app.inject({
         method: 'POST',
-        url: '/api/monitor/sync',
+        url: '/api/monitor/extensions',
         headers: {
-          'x-api-key': authToken,
+          authorization: `Bearer ${authToken}`,
         },
         payload: {
-          extensions: [
-            {
-              id: 'test-ext-2',
-              // Missing required fields
-            },
-          ],
+          extensionId: 'test-ext-2',
+          // Missing required fields
         },
       });
 
@@ -165,11 +203,12 @@ describe('API Integration Tests', () => {
 
   describe('Rate Limiting', () => {
     it('should enforce rate limits', async () => {
-      // Send many requests
-      const requests = Array(101).fill(null).map(() =>
+      // Send 15 requests from an isolated IP when max is 10
+      const requests = Array(15).fill(null).map(() =>
         app.inject({
           method: 'POST',
           url: '/api/auth/login',
+          remoteAddress: '192.168.1.99',
           payload: {
             email: 'test@example.com',
             password: 'Test123!@#',
@@ -180,7 +219,6 @@ describe('API Integration Tests', () => {
       const responses = await Promise.all(requests);
       const rateLimited = responses.some(r => r.statusCode === 429);
 
-      // At least some should be rate limited
       expect(rateLimited).toBe(true);
     });
   });
@@ -192,6 +230,7 @@ describe('API Integration Tests', () => {
         url: '/api/auth/login',
         headers: {
           origin: 'http://localhost:3000',
+          'access-control-request-method': 'POST',
         },
       });
 

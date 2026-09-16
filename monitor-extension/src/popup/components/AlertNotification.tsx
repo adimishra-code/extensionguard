@@ -1,4 +1,3 @@
-import React from 'react';
 import { AlertTriangle, XCircle, AlertCircle, Info, X } from 'lucide-react';
 import type { Alert } from '@/types';
 

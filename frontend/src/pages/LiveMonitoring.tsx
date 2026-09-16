@@ -1,6 +1,5 @@
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Activity, AlertTriangle, Shield, TrendingUp, Radio } from 'lucide-react';
-import { useQuery } from '@tanstack/react-query';
 import { cn } from '../lib/utils';
 
 interface LiveStats {
@@ -32,7 +31,21 @@ export function LiveMonitoring() {
 
   useEffect(() => {
     // Connect to WebSocket for live updates
-    const ws = new WebSocket('ws://localhost:3001/ws');
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    let host = window.location.host;
+    const apiUrl = import.meta.env.VITE_API_URL;
+    if (apiUrl) {
+      try {
+        host = new URL(apiUrl).host;
+      } catch {
+        // keep fallback
+      }
+    } else if (window.location.port === '5173') {
+      host = `${window.location.hostname}:3001`;
+    }
+    const token = localStorage.getItem('token') || localStorage.getItem('auth_token');
+    const wsUrl = `${protocol}//${host}/ws${token ? `?token=${encodeURIComponent(token)}` : ''}`;
+    const ws = new WebSocket(wsUrl);
 
     ws.onopen = () => {
       console.log('Connected to live monitoring');

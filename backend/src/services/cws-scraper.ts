@@ -45,7 +45,7 @@ export class CWSScraperService {
 
       // TODO: Implement actual CWS scraping with Playwright
       // For now, return mock data structure
-      const cwsUrl = `https://chrome.google.com/webstore/detail/${extensionId}`;
+      const _cwsUrl = `https://chrome.google.com/webstore/detail/${extensionId}`;
 
       // In real implementation:
       // 1. Launch Playwright browser
@@ -179,7 +179,7 @@ export class CWSScraperService {
   /**
    * Trigger differential analysis if previous version exists
    */
-  private async triggerDifferentialAnalysis(extensionId: string, newVersionId: string): Promise<void> {
+  private async triggerDifferentialAnalysis(extensionId: string, _newVersionId: string): Promise<void> {
     // Get previous version
     const versions = await prisma.extensionVersion.findMany({
       where: { extension_id: extensionId },
@@ -187,12 +187,13 @@ export class CWSScraperService {
       take: 2,
     });
 
-    if (versions.length < 2) {
+    if (versions.length < 2 || !versions[0] || !versions[1]) {
       logger.debug({ extensionId }, 'No previous version for comparison');
       return;
     }
 
-    const [newVersion, oldVersion] = versions;
+    const newVersion = versions[0];
+    const oldVersion = versions[1];
 
     // Run differential analysis
     logger.info({ extensionId, oldVersion: oldVersion.version, newVersion: newVersion.version }, 'Triggering differential analysis');

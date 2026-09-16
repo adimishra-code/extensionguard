@@ -1,4 +1,3 @@
-import { logger } from '../utils/logger';
 
 interface NetworkRequest {
   extensionId: string;

@@ -143,11 +143,12 @@ export async function differentialRoutes(fastify: FastifyInstance) {
       take: 2,
     });
 
-    if (versions.length < 2) {
+    if (versions.length < 2 || !versions[0] || !versions[1]) {
       return reply.code(400).send({ error: 'Not enough versions to compare' });
     }
 
-    const [newVersion, oldVersion] = versions;
+    const newVersion = versions[0];
+    const oldVersion = versions[1];
 
     // Check if analysis already exists
     const existing = await prisma.differentialAnalysis.findUnique({

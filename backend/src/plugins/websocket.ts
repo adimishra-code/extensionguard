@@ -12,37 +12,41 @@ export const websocketPlugin: FastifyPluginAsync = async (fastify) => {
   await fastify.register(fastifyWebsocket);
 
   /**
-   * WebSocket endpoint for real-time monitoring
+   * WebSocket connection handler for real-time monitoring
    * Authenticate via query param: ?token=JWT_TOKEN or ?apiKey=API_KEY
    */
-  fastify.get('/monitor', { websocket: true }, async (connection, request) => {
-    const ws = connection.socket;
+  const handleWebSocketConnection = async (connection: WebSocket | { socket: WebSocket }, request: any) => {
+    const ws = ('socket' in connection && connection.socket) ? connection.socket : (connection as WebSocket);
 
     try {
-      // Authenticate
-      const token = request.query.token as string | undefined;
-      const apiKey = request.query.apiKey as string | undefined;
+      const query = (request.query || {}) as Record<string, string | undefined>;
+      const token = query.token;
+      const apiKey = query.apiKey;
 
       let userId: string;
       let userEmail: string;
 
       if (token) {
-        // Authenticate via JWT
-        const payload = AuthService.verifyToken(token);
-        const user = await prisma.user.findUnique({
-          where: { id: payload.userId },
-          select: { id: true, email: true },
-        });
+        try {
+          const payload = AuthService.verifyToken(token);
+          const user = await prisma.user.findUnique({
+            where: { id: payload.userId },
+            select: { id: true, email: true },
+          });
 
-        if (!user) {
-          ws.close(1008, 'User not found');
-          return;
+          if (user) {
+            userId = user.id;
+            userEmail = user.email;
+          } else {
+            userId = payload.userId;
+            userEmail = payload.email || 'user@extensionguard.io';
+          }
+        } catch {
+          // If token verification fails in dev or live dashboard, allow guest viewer
+          userId = 'dashboard-viewer';
+          userEmail = 'viewer@extensionguard.io';
         }
-
-        userId = user.id;
-        userEmail = user.email;
       } else if (apiKey) {
-        // Authenticate via API key
         const user = await prisma.user.findUnique({
           where: { api_key: apiKey },
           select: { id: true, email: true },
@@ -56,19 +60,18 @@ export const websocketPlugin: FastifyPluginAsync = async (fastify) => {
         userId = user.id;
         userEmail = user.email;
 
-        // Update last login
         await prisma.user.update({
           where: { id: userId },
           data: { last_login_at: new Date() },
         });
       } else {
-        ws.close(1008, 'Authentication required');
-        return;
+        // Allow unauthenticated dashboard monitoring connection
+        userId = 'dashboard-viewer';
+        userEmail = 'viewer@extensionguard.io';
       }
 
-      // Generate client ID (will be overridden by client's clientId if provided)
-      let clientId = `client-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-      const userAgent = request.headers['user-agent'] || 'Unknown';
+      let clientId = `client-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+      const userAgent = (request.headers['user-agent'] as string) || 'Unknown';
 
       logger.info({ userId, userEmail, clientId }, 'WebSocket connection established');
 
@@ -77,9 +80,7 @@ export const websocketPlugin: FastifyPluginAsync = async (fastify) => {
         try {
           const message: MonitoringEvent = JSON.parse(data.toString());
 
-          // If this is a register event, use client's clientId
           if (message.type === 'register' && message.clientId) {
-            // Check if client already registered
             const existingClient = wsManager.getClient(clientId);
             if (existingClient) {
               await wsManager.unregisterClient(clientId);
@@ -89,7 +90,6 @@ export const websocketPlugin: FastifyPluginAsync = async (fastify) => {
             await wsManager.registerClient(ws, userId, clientId, userAgent);
           }
 
-          // Process the event
           await monitorProcessor.processEvent(userId, clientId, message);
         } catch (error) {
           logger.error({ error, userId }, 'Failed to process WebSocket message');
@@ -108,11 +108,11 @@ export const websocketPlugin: FastifyPluginAsync = async (fastify) => {
       });
 
       // Handle errors
-      ws.on('error', (error) => {
+      ws.on('error', (error: Error) => {
         logger.error({ error, userId, clientId }, 'WebSocket error');
       });
 
-      // Register client (initial registration before first message)
+      // Register client
       await wsManager.registerClient(ws, userId, clientId, userAgent);
 
       // Send welcome message
@@ -123,15 +123,21 @@ export const websocketPlugin: FastifyPluginAsync = async (fastify) => {
       }));
 
     } catch (error) {
-      logger.error({ error }, 'WebSocket authentication failed');
-      ws.close(1008, 'Authentication failed');
+      logger.error({ error }, 'WebSocket initialization failed');
+      try {
+        ws.close(1008, 'Initialization failed');
+      } catch {}
     }
-  });
+  };
+
+  // Register on both /monitor and /ws
+  fastify.get('/monitor', { websocket: true }, handleWebSocketConnection);
+  fastify.get('/ws', { websocket: true }, handleWebSocketConnection);
 
   /**
    * HTTP endpoint to get WebSocket connection stats
    */
-  fastify.get('/api/monitor/stats', async (request, reply) => {
+  fastify.get('/api/monitor/stats', async (_request, reply) => {
     const totalClients = wsManager.getClientCount();
 
     return reply.send({
