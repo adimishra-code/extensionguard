@@ -35,8 +35,15 @@ fastify.register(multipart, {
   },
 });
 fastify.register(rateLimit, {
+  global: true,
   max: 100,
   timeWindow: '1 minute',
+  keyGenerator: (request) => request.ip,
+  errorResponseBuilder: (_request, context) => ({
+    error: 'Too Many Requests',
+    message: `Rate limit exceeded. Retry after ${context.after}`,
+    statusCode: 429,
+  }),
 });
 
 fastify.register(websocketPlugin);

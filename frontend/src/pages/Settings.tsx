@@ -1,14 +1,59 @@
 import { useQuery } from '@tanstack/react-query';
-import { Server, Database, Cpu, CheckCircle2, RefreshCw } from 'lucide-react';
+import { Server, Database, Cpu, CheckCircle2, XCircle, RefreshCw, Clock } from 'lucide-react';
 import { healthApi } from '../lib/api';
 import { cn } from '../lib/utils';
 
+interface ServiceStatus {
+  status: string;
+  latency_ms?: number;
+}
+
+interface HealthDetail {
+  status: string;
+  timestamp: string;
+  version: string;
+  environment: string;
+  metrics?: {
+    total_scans: number;
+    total_extensions: number;
+    database_latency_ms: number;
+    redis_latency_ms: number;
+  };
+  services?: {
+    database: ServiceStatus;
+    redis: ServiceStatus;
+    worker: ServiceStatus;
+  };
+}
+
+function StatusIcon({ ok }: { ok: boolean }) {
+  return ok
+    ? <CheckCircle2 className="h-5 w-5 text-success-600" />
+    : <XCircle className="h-5 w-5 text-danger-500" />;
+}
+
+function LatencyBadge({ ms }: { ms?: number }) {
+  if (ms === undefined) return null;
+  const color = ms < 20 ? 'text-success-600' : ms < 100 ? 'text-warning-600' : 'text-danger-600';
+  return <span className={cn('font-mono text-xs', color)}>{ms}ms</span>;
+}
+
 export function Settings() {
-  const { data: health, isLoading, refetch } = useQuery({
-    queryKey: ['health'],
-    queryFn: () => healthApi.check().then(r => r.data),
-    refetchInterval: 10000,
+  const { data: health, isLoading, refetch, dataUpdatedAt } = useQuery<HealthDetail>({
+    queryKey: ['health', 'detailed'],
+    queryFn: () => healthApi.detailed().then(r => r.data),
+    refetchInterval: 15000,
+    retry: 1,
   });
+
+  const dbOk = health?.services?.database?.status === 'connected';
+  const redisOk = health?.services?.redis?.status === 'connected';
+  const workerOk = health?.services?.worker?.status === 'running';
+  const overallOk = health?.status === 'healthy';
+
+  const lastChecked = dataUpdatedAt
+    ? new Date(dataUpdatedAt).toLocaleTimeString()
+    : null;
 
   return (
     <div className="max-w-4xl mx-auto space-y-6">
@@ -17,15 +62,35 @@ export function Settings() {
           <h1 className="text-2xl font-bold text-gray-900">System & Engine Settings</h1>
           <p className="text-gray-500 mt-1">Platform health diagnostics, analysis engine limits, and scanner rulesets</p>
         </div>
-        <button
-          onClick={() => refetch()}
-          className="btn-secondary text-sm flex items-center gap-1.5"
-        >
-          <RefreshCw className={cn("h-4 w-4", isLoading && "animate-spin")} /> Refresh Status
-        </button>
+        <div className="flex items-center gap-3">
+          {lastChecked && (
+            <span className="text-xs text-gray-400 flex items-center gap-1">
+              <Clock className="h-3 w-3" /> {lastChecked}
+            </span>
+          )}
+          <button
+            onClick={() => refetch()}
+            className="btn-secondary text-sm flex items-center gap-1.5"
+          >
+            <RefreshCw className={cn("h-4 w-4", isLoading && "animate-spin")} /> Refresh
+          </button>
+        </div>
       </div>
 
-      {/* Health Status Cards */}
+      {/* Overall health banner */}
+      {health && (
+        <div className={cn(
+          'rounded-xl border px-5 py-3 flex items-center gap-3 text-sm font-medium',
+          overallOk
+            ? 'bg-success-50 border-success-200 text-success-800'
+            : 'bg-danger-50 border-danger-200 text-danger-800'
+        )}>
+          <StatusIcon ok={overallOk} />
+          Platform is {overallOk ? 'healthy' : 'degraded'} — {health.environment} · v{health.version}
+        </div>
+      )}
+
+      {/* Service Status Cards */}
       <div className="grid gap-4 sm:grid-cols-3">
         <div className="card p-5">
           <div className="flex items-center justify-between">
@@ -38,35 +103,38 @@ export function Settings() {
                 <p className="text-base font-bold text-gray-900 mt-0.5">Fastify v4</p>
               </div>
             </div>
-            <CheckCircle2 className="h-5 w-5 text-success-600" />
+            <StatusIcon ok={overallOk} />
           </div>
           <p className="text-xs text-gray-500 mt-3 pt-3 border-t border-gray-100">
-            Engine Version: <span className="font-mono">{health?.version || '0.1.0'}</span>
+            Engine Version: <span className="font-mono">{health?.version || '—'}</span>
           </p>
         </div>
 
         <div className="card p-5">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <div className="p-2.5 rounded-xl bg-success-100 text-success-700">
+              <div className={cn('p-2.5 rounded-xl', dbOk ? 'bg-success-100 text-success-700' : 'bg-danger-100 text-danger-700')}>
                 <Database className="h-5 w-5" />
               </div>
               <div>
                 <p className="text-xs text-gray-500 font-semibold uppercase">PostgreSQL DB</p>
-                <p className="text-base font-bold text-gray-900 mt-0.5">Connected</p>
+                <p className="text-base font-bold text-gray-900 mt-0.5">
+                  {isLoading ? 'Checking...' : dbOk ? 'Connected' : 'Disconnected'}
+                </p>
               </div>
             </div>
-            <CheckCircle2 className="h-5 w-5 text-success-600" />
+            <StatusIcon ok={dbOk} />
           </div>
-          <p className="text-xs text-gray-500 mt-3 pt-3 border-t border-gray-100">
-            ORM: <span className="font-mono">Prisma Client v5</span>
+          <p className="text-xs text-gray-500 mt-3 pt-3 border-t border-gray-100 flex justify-between">
+            <span>Prisma Client v5</span>
+            <LatencyBadge ms={health?.services?.database?.latency_ms} />
           </p>
         </div>
 
         <div className="card p-5">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <div className="p-2.5 rounded-xl bg-warning-100 text-warning-700">
+              <div className={cn('p-2.5 rounded-xl', workerOk ? 'bg-warning-100 text-warning-700' : 'bg-danger-100 text-danger-700')}>
                 <Cpu className="h-5 w-5" />
               </div>
               <div>
@@ -74,18 +142,44 @@ export function Settings() {
                 <p className="text-base font-bold text-gray-900 mt-0.5">BullMQ + Redis</p>
               </div>
             </div>
-            <CheckCircle2 className="h-5 w-5 text-success-600" />
+            <StatusIcon ok={redisOk && workerOk} />
           </div>
-          <p className="text-xs text-gray-500 mt-3 pt-3 border-t border-gray-100">
-            Concurrency: <span className="font-mono">2 workers active</span>
+          <p className="text-xs text-gray-500 mt-3 pt-3 border-t border-gray-100 flex justify-between">
+            <span>2 workers active</span>
+            <LatencyBadge ms={health?.metrics?.redis_latency_ms} />
           </p>
         </div>
       </div>
 
+      {/* Metrics */}
+      {health?.metrics && (
+        <div className="card p-6">
+          <h2 className="text-lg font-semibold text-gray-900 mb-4">Platform Metrics</h2>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-center">
+            <div>
+              <p className="text-3xl font-bold text-gray-900">{health.metrics.total_scans}</p>
+              <p className="text-xs text-gray-500 mt-1">Total Scans</p>
+            </div>
+            <div>
+              <p className="text-3xl font-bold text-gray-900">{health.metrics.total_extensions}</p>
+              <p className="text-xs text-gray-500 mt-1">Extensions</p>
+            </div>
+            <div>
+              <p className="text-3xl font-bold text-gray-900">{health.metrics.database_latency_ms}ms</p>
+              <p className="text-xs text-gray-500 mt-1">DB Latency</p>
+            </div>
+            <div>
+              <p className="text-3xl font-bold text-gray-900">{health.metrics.redis_latency_ms}ms</p>
+              <p className="text-xs text-gray-500 mt-1">Redis Latency</p>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Engine Configuration */}
       <div className="card p-6 space-y-6">
         <h2 className="text-lg font-semibold text-gray-900">Scan Pipeline Configuration</h2>
-        
+
         <div className="grid sm:grid-cols-2 gap-6 text-sm">
           <div className="space-y-1">
             <label className="font-medium text-gray-900">Default Sandbox Timeout</label>
@@ -132,11 +226,12 @@ export function Settings() {
         </div>
       </div>
 
-      {/* About & API Information */}
+      {/* About */}
       <div className="card p-6 bg-gray-50 space-y-3">
-        <h3 className="font-semibold text-gray-900">About Extension Guard</h3>
+        <h3 className="font-semibold text-gray-900">About ExtensionGuard</h3>
         <p className="text-xs text-gray-600 leading-relaxed">
-          Extension Guard provides automated static and dynamic runtime security audits for Chromium, Firefox, and Edge browser extensions. Built with Fastify, Playwright, React, and Python AST analyzers.
+          ExtensionGuard provides automated static and dynamic runtime security audits for Chromium, Firefox, and Edge browser extensions.
+          Built with Fastify, Playwright, React, and Python AST analyzers. Version {health?.version || '1.0.0'}.
         </p>
       </div>
     </div>

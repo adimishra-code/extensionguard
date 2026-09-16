@@ -102,7 +102,10 @@ async function parseManifest(filePath: string): Promise<ExtensionManifest> {
 
 export async function scanRoutes(fastify: FastifyInstance) {
   // POST /api/scans - Upload extension and queue scan
-  fastify.post('/api/scans', async (request: FastifyRequest<{ Querystring: { scanType?: string } }>, reply: FastifyReply) => {
+  // Tighter rate limit: scanning is expensive, 10 uploads per minute per IP is sufficient
+  fastify.post('/api/scans', {
+    config: { rateLimit: { max: 10, timeWindow: '1 minute' } },
+  }, async (request: FastifyRequest<{ Querystring: { scanType?: string } }>, reply: FastifyReply) => {
     const logger_ = logger.child({ route: 'POST /api/scans' });
     
     try {
