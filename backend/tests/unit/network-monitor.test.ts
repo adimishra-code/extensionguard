@@ -166,9 +166,7 @@ describe('Network Monitor', () => {
       const analysis = await networkMonitor.analyzeNetworkPatterns('test-ext');
 
       expect(analysis.uniqueDomains).toBeGreaterThan(50);
-      expect(analysis.anomalies).toContain(
-        expect.stringContaining('unique domains')
-      );
+      expect(analysis.anomalies.some((a: string) => a.includes('unique domains'))).toBe(true);
     });
 
     it('should detect high external request ratio', async () => {

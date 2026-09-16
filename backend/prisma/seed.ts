@@ -1,5 +1,4 @@
 import { PrismaClient } from '@prisma/client';
-import { v4 as uuidv4 } from 'uuid';
 
 const prisma = new PrismaClient();
 
@@ -17,10 +16,9 @@ async function main() {
   await prisma.scan.deleteMany();
   await prisma.extension.deleteMany();
 
-  // 1. High-Risk Extension: AdBlock Pro (Malicious Injector)
+  // ─── 1. High-Risk Extension: AdBlock Ultra Speed (Malicious Injector) ────────
   const ext1 = await prisma.extension.create({
     data: {
-      id: uuidv4(),
       name: 'AdBlock Ultra Speed',
       version: '3.4.1',
       browser: 'chrome',
@@ -41,14 +39,13 @@ async function main() {
 
   const scan1 = await prisma.scan.create({
     data: {
-      id: uuidv4(),
       extension_id: ext1.id,
       type: 'full',
       status: 'completed',
       started_at: new Date(Date.now() - 3600000),
       completed_at: new Date(Date.now() - 3540000),
-      analyzer_version: '0.1.0',
-      ruleset_version: '0.1.0',
+      analyzer_version: '1.0.0',
+      ruleset_version: '1.0.0',
       config_json: {
         enable_static: true,
         enable_runtime: true,
@@ -75,7 +72,7 @@ async function main() {
       dependency_score: 20,
       purpose_mismatch_score: 50,
       runtime_score: 85,
-      confidence: 'confirmed',
+      confidence: 0.92,
       breakdown_json: {
         permission: 90,
         code: 75,
@@ -90,7 +87,6 @@ async function main() {
   await prisma.finding.createMany({
     data: [
       {
-        id: uuidv4(),
         scan_id: scan1.id,
         category: 'permission_risk',
         severity: 'critical',
@@ -101,10 +97,8 @@ async function main() {
         recommendation: 'Scope host permissions to specific domains required for operation.',
         limitations: 'Static manifest declaration.',
         evidence_ids: [],
-        created_at: new Date(Date.now() - 3550000),
       },
       {
-        id: uuidv4(),
         scan_id: scan1.id,
         category: 'remote_code_execution',
         severity: 'high',
@@ -118,10 +112,8 @@ async function main() {
         affected_line: 42,
         affected_api: 'eval',
         code_snippet: 'eval(responseBody);',
-        created_at: new Date(Date.now() - 3550000),
       },
       {
-        id: uuidv4(),
         scan_id: scan1.id,
         category: 'network_exfiltration',
         severity: 'high',
@@ -132,7 +124,6 @@ async function main() {
         recommendation: 'Verify if this endpoint is authorized and complies with privacy policy.',
         limitations: 'Dynamic network capture.',
         affected_api: 'tracking-cdn.xyz',
-        created_at: new Date(Date.now() - 3550000),
       },
     ],
   });
@@ -140,7 +131,6 @@ async function main() {
   await prisma.permissionRisk.createMany({
     data: [
       {
-        id: uuidv4(),
         scan_id: scan1.id,
         permission: 'cookies',
         risk_level: 'high',
@@ -148,7 +138,6 @@ async function main() {
         evidence_ids: [],
       },
       {
-        id: uuidv4(),
         scan_id: scan1.id,
         permission: 'host:<all_urls>',
         risk_level: 'critical',
@@ -158,10 +147,9 @@ async function main() {
     ],
   });
 
-  // 2. Low-Risk Extension: Color Picker Tool
+  // ─── 2. Low-Risk Extension: Eyedropper Color Picker ──────────────────────────
   const ext2 = await prisma.extension.create({
     data: {
-      id: uuidv4(),
       name: 'Eyedropper Color Picker',
       version: '1.2.0',
       browser: 'chrome',
@@ -181,14 +169,23 @@ async function main() {
 
   const scan2 = await prisma.scan.create({
     data: {
-      id: uuidv4(),
       extension_id: ext2.id,
       type: 'quick',
       status: 'completed',
       started_at: new Date(Date.now() - 7200000),
       completed_at: new Date(Date.now() - 7170000),
-      analyzer_version: '0.1.0',
-      ruleset_version: '0.1.0',
+      analyzer_version: '1.0.0',
+      ruleset_version: '1.0.0',
+      config_json: {
+        enable_static: true,
+        enable_runtime: false,
+        enable_network: false,
+        enable_data_flow: false,
+        enable_llm: false,
+        runtime_timeout_seconds: 60,
+        max_file_size_mb: 50,
+        rulesets: ['owasp_top10'],
+      },
     },
   });
 
@@ -205,7 +202,7 @@ async function main() {
       dependency_score: 0,
       purpose_mismatch_score: 0,
       runtime_score: 0,
-      confidence: 'confirmed',
+      confidence: 0.95,
       breakdown_json: {
         permission: 15,
         code: 10,
@@ -216,6 +213,7 @@ async function main() {
     },
   });
 
+  console.log(`✓ Created ${2} extensions, ${2} scans`);
   console.log('Seed completed successfully!');
 }
 
