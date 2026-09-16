@@ -1,10 +1,9 @@
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 import { config } from '../config';
+import crypto from 'crypto';
 
 const SALT_ROUNDS = 10;
-const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-change-in-production';
-const JWT_EXPIRES_IN = '7d';
 const API_KEY_PREFIX = 'eg_';
 
 export interface JWTPayload {
@@ -31,7 +30,7 @@ export class AuthService {
    * Generate a JWT token
    */
   static generateToken(payload: JWTPayload): string {
-    return jwt.sign(payload, JWT_SECRET, { expiresIn: JWT_EXPIRES_IN });
+    return jwt.sign(payload, config.JWT_SECRET, { expiresIn: config.JWT_EXPIRES_IN as jwt.SignOptions['expiresIn'] });
   }
 
   /**
@@ -39,18 +38,17 @@ export class AuthService {
    */
   static verifyToken(token: string): JWTPayload {
     try {
-      return jwt.verify(token, JWT_SECRET) as JWTPayload;
-    } catch (error) {
+      return jwt.verify(token, config.JWT_SECRET) as JWTPayload;
+    } catch {
       throw new Error('Invalid or expired token');
     }
   }
 
   /**
-   * Generate a random API key
+   * Generate a cryptographically random API key
    */
   static generateApiKey(): string {
-    const random = Math.random().toString(36).substring(2, 15) +
-                   Math.random().toString(36).substring(2, 15);
+    const random = crypto.randomBytes(20).toString('hex');
     return `${API_KEY_PREFIX}${random}`;
   }
 

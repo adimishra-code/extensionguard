@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   postgres:
     image: postgres:15-alpine
@@ -7,7 +5,7 @@ services:
     restart: unless-stopped
     environment:
       POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgrespassword
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgrespassword}
       POSTGRES_DB: extension_guard
     ports:
       - "5432:5432"
@@ -48,14 +46,28 @@ services:
       NODE_ENV: production
       PORT: 3001
       HOST: 0.0.0.0
-      DATABASE_URL: postgresql://postgres:postgrespassword@postgres:5432/extension_guard?schema=public
+      DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD:-postgrespassword}@postgres:5432/extension_guard?schema=public
       REDIS_URL: redis://redis:6379
-      FRONTEND_URL: http://localhost:5173
+      FRONTEND_URL: ${FRONTEND_URL:-http://localhost:5173}
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-7d}
       UPLOAD_DIR: /tmp/extension-guard/uploads
+      UPLOAD_MAX_SIZE: 52428800
+      ANALYZER_TIMEOUT_MS: 300000
+      SANDBOX_TIMEOUT_MS: 600000
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      ANALYZER_VERSION: "1.0.0"
+      RULESET_VERSION: "1.0.0"
     ports:
       - "3001:3001"
     volumes:
       - uploads_data:/tmp/extension-guard/uploads
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:3001/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
 
   frontend:
     build:
@@ -64,7 +76,8 @@ services:
     container_name: extension-guard-frontend
     restart: unless-stopped
     depends_on:
-      - backend
+      backend:
+        condition: service_healthy
     ports:
       - "5173:80"
 
