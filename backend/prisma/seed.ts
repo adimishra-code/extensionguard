@@ -1,11 +1,23 @@
 import { PrismaClient } from '@prisma/client';
+import bcrypt from 'bcrypt';
 
 const prisma = new PrismaClient();
 
 async function main() {
-  console.log('Seeding demo extension audit data...');
+  console.log('Seeding demo extension audit and threat intelligence data...');
 
-  // Clean existing seed data
+  // Clean existing seed data in correct dependency order
+  await prisma.monitoringEvent.deleteMany();
+  await prisma.monitorSession.deleteMany();
+  await prisma.alert.deleteMany();
+  await prisma.networkLog.deleteMany();
+  await prisma.monitoredExtension.deleteMany();
+  await prisma.communityReport.deleteMany();
+  await prisma.threatIntelligence.deleteMany();
+  await prisma.supplyChainEvent.deleteMany();
+  await prisma.differentialAnalysis.deleteMany();
+  await prisma.extensionVersion.deleteMany();
+  await prisma.cWSMetadata.deleteMany();
   await prisma.finding.deleteMany();
   await prisma.evidence.deleteMany();
   await prisma.networkEvent.deleteMany();
@@ -15,6 +27,17 @@ async function main() {
   await prisma.riskScores.deleteMany();
   await prisma.scan.deleteMany();
   await prisma.extension.deleteMany();
+  await prisma.user.deleteMany();
+
+  // ─── 0. Default Admin & Analyst User ─────────────────────────────────────────
+  const passwordHash = await bcrypt.hash('admin12345', 10);
+  const demoUser = await prisma.user.create({
+    data: {
+      email: 'security@extensionguard.io',
+      password_hash: passwordHash,
+      api_key: 'eg_sec_analyst_demo_live_key_99',
+    },
+  });
 
   // ─── 1. High-Risk Extension: AdBlock Ultra Speed (Malicious Injector) ────────
   const ext1 = await prisma.extension.create({
@@ -112,6 +135,7 @@ async function main() {
         affected_line: 42,
         affected_api: 'eval',
         code_snippet: 'eval(responseBody);',
+        evidence_ids: [],
       },
       {
         scan_id: scan1.id,
@@ -124,6 +148,7 @@ async function main() {
         recommendation: 'Verify if this endpoint is authorized and complies with privacy policy.',
         limitations: 'Dynamic network capture.',
         affected_api: 'tracking-cdn.xyz',
+        evidence_ids: [],
       },
     ],
   });
@@ -213,7 +238,225 @@ async function main() {
     },
   });
 
-  console.log(`✓ Created ${2} extensions, ${2} scans`);
+  // ─── 3. Threat Intelligence Database Seeds ──────────────────────────────────
+  await prisma.threatIntelligence.createMany({
+    data: [
+      {
+        domain: 'tracking-cdn.xyz',
+        type: 'domain',
+        severity: 'critical',
+        description: 'Known C2 telemetry endpoint harvesting form inputs and auth tokens',
+        source: 'verified',
+        confidence: 0.98,
+        active: true,
+        metadata: { category: 'credential_harvesting', first_seen: '2026-08-10' },
+      },
+      {
+        domain: 'analytics-telemetry-sync.online',
+        type: 'domain',
+        severity: 'high',
+        description: 'Suspicious dynamic script loader targeting banking URLs',
+        source: 'vendor',
+        confidence: 0.92,
+        active: true,
+        metadata: { category: 'malicious_redirect', first_seen: '2026-09-02' },
+      },
+      {
+        pattern: 'eval\\(atob\\([a-zA-Z0-9_]+\\)\\)',
+        type: 'code_pattern',
+        severity: 'critical',
+        description: 'Obfuscated base64 payload evaluation detected in content scripts',
+        source: 'automated',
+        confidence: 0.95,
+        active: true,
+        metadata: { rule: 'ast_eval_base64' },
+      },
+      {
+        extension_id: 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855',
+        type: 'extension',
+        severity: 'critical',
+        description: 'AdBlock Ultra Speed v3.4.1 caught exfiltrating session tokens',
+        source: 'community',
+        confidence: 0.94,
+        active: true,
+        metadata: { flagged_by_reports: 14 },
+      },
+    ],
+  });
+
+  // ─── 4. Community Reports ────────────────────────────────────────────────────
+  await prisma.communityReport.createMany({
+    data: [
+      {
+        user_id: demoUser.id,
+        extension_id: 'adblock-ultra-fake-id',
+        extension_name: 'AdBlock Ultra Speed',
+        extension_version: '3.4.1',
+        report_type: 'data_theft',
+        description: 'After update to 3.4.1, developer console shows POST requests with cookie dumps to tracking-cdn.xyz',
+        status: 'verified',
+        reviewed_by: 'security@extensionguard.io',
+        review_notes: 'Confirmed malicious telemetry injected into service worker.',
+      },
+      {
+        user_id: demoUser.id,
+        extension_id: 'pdf-converter-quick-id',
+        extension_name: 'Quick PDF Maker',
+        extension_version: '2.1.0',
+        report_type: 'suspicious',
+        description: 'Requests clipboardRead and all_urls permissions despite only converting local PDFs.',
+        status: 'pending',
+      },
+    ],
+  });
+
+  // ─── 5. Extension Versions & Differential Analysis ───────────────────────────
+  const cwsExtId = 'adblock-ultra-demo';
+  const vOld = await prisma.extensionVersion.create({
+    data: {
+      extension_id: cwsExtId,
+      version: '3.4.0',
+      name: 'AdBlock Ultra Speed',
+      description: 'Fast adblocker',
+      permissions: ['storage'],
+      host_permissions: ['https://*/*'],
+      manifest: { version: '3.4.0', permissions: ['storage'] },
+      release_date: new Date(Date.now() - 86400000 * 30),
+    },
+  });
+
+  const vNew = await prisma.extensionVersion.create({
+    data: {
+      extension_id: cwsExtId,
+      version: '3.4.1',
+      name: 'AdBlock Ultra Speed',
+      description: 'Fast adblocker with performance enhancements',
+      permissions: ['storage', 'cookies', 'webRequest', 'tabs'],
+      host_permissions: ['<all_urls>'],
+      manifest: { version: '3.4.1', permissions: ['storage', 'cookies', 'webRequest', 'tabs'] },
+      release_date: new Date(Date.now() - 86400000 * 2),
+      scan_id: scan1.id,
+    },
+  });
+
+  await prisma.differentialAnalysis.create({
+    data: {
+      extension_id: cwsExtId,
+      old_version: '3.4.0',
+      new_version: '3.4.1',
+      permissions_added: ['cookies', 'webRequest', 'tabs'],
+      permissions_removed: [],
+      host_permissions_added: ['<all_urls>'],
+      host_permissions_removed: [],
+      manifest_changes: {
+        permissions: { added: ['cookies', 'webRequest', 'tabs'], removed: [] },
+        host_permissions: { added: ['<all_urls>'], removed: [] },
+      },
+      code_changes_summary: 'New background telemetry sender added with eval-based loader.',
+      risk_delta: 52,
+      severity: 'critical',
+      findings_added: 3,
+      findings_removed: 0,
+    },
+  });
+
+  await prisma.supplyChainEvent.createMany({
+    data: [
+      {
+        extension_version_id: vNew.id,
+        extension_id: cwsExtId,
+        event_type: 'permission_added',
+        severity: 'critical',
+        description: 'New permissions added in v3.4.1: cookies, webRequest, tabs, host:<all_urls>',
+        metadata: { permissions: ['cookies', 'webRequest', 'tabs'], host_permissions: ['<all_urls>'] },
+      },
+      {
+        extension_version_id: vNew.id,
+        extension_id: cwsExtId,
+        event_type: 'ownership_transfer',
+        severity: 'high',
+        description: 'Maintainer contact email changed from dev@adblocker.org to lead@unknown-holding.io',
+        metadata: { old_email: 'dev@adblocker.org', new_email: 'lead@unknown-holding.io' },
+      },
+    ],
+  });
+
+  // ─── 6. Monitored Extension & User Alerts ────────────────────────────────────
+  await prisma.monitoredExtension.create({
+    data: {
+      user_id: demoUser.id,
+      extension_id: cwsExtId,
+      extension_name: 'AdBlock Ultra Speed',
+      current_version: '3.4.1',
+      auto_scan: true,
+      alert_on_update: true,
+      alert_threshold: 'high',
+    },
+  });
+
+  await prisma.alert.createMany({
+    data: [
+      {
+        user_id: demoUser.id,
+        extension_id: cwsExtId,
+        severity: 'critical',
+        title: 'High-risk permission expansion in AdBlock Ultra Speed',
+        message: 'Version 3.4.1 added wildcard host scope (<all_urls>) and cookies permission.',
+        action_required: true,
+        read: false,
+      },
+      {
+        user_id: demoUser.id,
+        extension_id: cwsExtId,
+        severity: 'high',
+        title: 'Suspicious telemetry endpoint connection',
+        message: 'Observed traffic to known IOC tracking-cdn.xyz during runtime analysis.',
+        action_required: false,
+        read: false,
+      },
+      {
+        user_id: demoUser.id,
+        extension_id: ext2.id,
+        severity: 'low',
+        title: 'Routine scan completed for Eyedropper Color Picker',
+        message: 'No elevated risk or suspicious network calls detected.',
+        action_required: false,
+        read: true,
+      },
+    ],
+  });
+
+  // ─── 7. Intercepted Network Logs ─────────────────────────────────────────────
+  await prisma.networkLog.createMany({
+    data: [
+      {
+        extension_id: cwsExtId,
+        url: 'https://tracking-cdn.xyz/collect',
+        method: 'POST',
+        status_code: 200,
+        blocked: true,
+        request_headers: { 'content-type': 'application/json' },
+      },
+      {
+        extension_id: cwsExtId,
+        url: 'https://analytics-telemetry-sync.online/v1/ping',
+        method: 'GET',
+        status_code: 403,
+        blocked: true,
+      },
+      {
+        extension_id: ext2.id,
+        url: 'https://fonts.googleapis.com/css2?family=Inter',
+        method: 'GET',
+        status_code: 200,
+        blocked: false,
+      },
+    ],
+  });
+
+  console.log('✓ Created 1 demo user');
+  console.log(`✓ Created 2 extensions, 2 scans, 4 threat IOCs`);
+  console.log(`✓ Created differential analysis, supply chain events, alerts, and network logs`);
   console.log('Seed completed successfully!');
 }
 
