@@ -6,6 +6,7 @@ import { ScanPage } from './pages/ScanPage';
 import { ScanDetail } from './pages/ScanDetail';
 import { ExtensionsList } from './pages/ExtensionsList';
 import { ExtensionDetail } from './pages/ExtensionDetail';
+import { ThreatIntelligence } from './pages/ThreatIntelligence';
 import { Settings } from './pages/Settings';
 
 export function App() {
@@ -20,8 +21,10 @@ export function App() {
         <Route path="scans/:id" element={<ScanDetail />} />
         <Route path="extensions" element={<ExtensionsList />} />
         <Route path="extensions/:id" element={<ExtensionDetail />} />
+        <Route path="threats" element={<ThreatIntelligence />} />
         <Route path="settings" element={<Settings />} />
       </Route>
+
       <Route path="*" element={<Navigate to="/dashboard" replace />} />
     </Routes>
   );
