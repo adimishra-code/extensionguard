@@ -301,6 +301,94 @@ export interface LLMAnalysisOutput {
   uncertainties: string[];
 }
 
+export interface ThreatIntelligenceItem {
+  id: string;
+  extension_id?: string | null;
+  pattern?: string | null;
+  domain?: string | null;
+  type: 'extension' | 'domain' | 'code_pattern' | 'maintainer' | 'supply_chain';
+  severity: Severity;
+  description: string;
+  source: string;
+  confidence: number;
+  reported_at: string;
+  verified_at?: string | null;
+  verified_by?: string | null;
+  metadata?: Record<string, unknown> | null;
+  active: boolean;
+  false_positive: boolean;
+}
+
+export interface CommunityReportItem {
+  id: string;
+  user_id: string;
+  extension_id: string;
+  extension_name: string;
+  extension_version?: string | null;
+  report_type: string;
+  description: string;
+  evidence?: Record<string, unknown> | null;
+  status: 'pending' | 'verified' | 'rejected' | 'investigating';
+  reported_at: string;
+  reviewed_at?: string | null;
+  reviewed_by?: string | null;
+  review_notes?: string | null;
+}
+
+export interface DifferentialAnalysisItem {
+  id: string;
+  extension_id: string;
+  old_version: string;
+  new_version: string;
+  permissions_added: string[];
+  permissions_removed: string[];
+  host_permissions_added: string[];
+  host_permissions_removed: string[];
+  manifest_changes: Record<string, unknown>;
+  code_changes_summary?: string | null;
+  risk_delta: number;
+  severity: Severity;
+  findings_added: number;
+  findings_removed: number;
+  findings_comparison?: Record<string, unknown> | null;
+  analysis_date: string;
+}
+
+export interface SupplyChainEventItem {
+  id: string;
+  extension_version_id?: string | null;
+  extension_id: string;
+  event_type: 'version_released' | 'permission_added' | 'permission_removed' | 'maintainer_changed' | 'ownership_transfer' | 'delisted' | 'reinstated' | 'malware_detected' | 'suspicious_network';
+  severity: Severity;
+  description: string;
+  metadata?: Record<string, unknown> | null;
+  detected_at: string;
+}
+
+export interface AlertItem {
+  id: string;
+  user_id: string;
+  extension_id: string;
+  severity: Severity;
+  title: string;
+  message: string;
+  action_required: boolean;
+  read: boolean;
+  created_at: string;
+}
+
+export interface NetworkLogItem {
+  id: string;
+  extension_id: string;
+  url: string;
+  method: string;
+  request_headers?: Record<string, unknown> | null;
+  response_headers?: Record<string, unknown> | null;
+  status_code?: number | null;
+  blocked: boolean;
+  timestamp: string;
+}
+
 export interface Report {
   scan_id: string;
   generated_at: string;

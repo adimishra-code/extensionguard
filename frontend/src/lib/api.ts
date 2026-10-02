@@ -1,5 +1,16 @@
 import axios from 'axios';
-import type { Scan, Extension, Finding, ScanType } from '@extension-guard/shared';
+import type {
+  Scan,
+  Extension,
+  Finding,
+  ScanType,
+  ThreatIntelligenceItem,
+  CommunityReportItem,
+  DifferentialAnalysisItem,
+  SupplyChainEventItem,
+  AlertItem,
+  NetworkLogItem,
+} from '@extension-guard/shared';
 
 const TOKEN_KEY = 'eg_auth_token';
 
@@ -106,6 +117,94 @@ export const authApi = {
 
   regenerateApiKey: () =>
     api.post('/auth/regenerate-api-key'),
+};
+
+export const threatIntelApi = {
+  checkExtension: (extensionId: string) =>
+    api.post<{ extensionId: string; isThreat: boolean; severity?: string; threats: ThreatIntelligenceItem[] }>(
+      '/threats/check/extension',
+      { extensionId }
+    ),
+
+  checkDomain: (domain: string) =>
+    api.post<{ domain: string; isThreat: boolean; severity?: string; threats: ThreatIntelligenceItem[] }>(
+      '/threats/check/domain',
+      { domain }
+    ),
+
+  listThreats: (params?: { type?: string; severity?: string; limit?: number }) =>
+    api.get<ThreatIntelligenceItem[]>('/threats', { params }),
+
+  verifyThreat: (id: string) =>
+    api.post(`/threats/${id}/verify`),
+
+  submitReport: (data: {
+    extensionId: string;
+    extensionName: string;
+    extensionVersion?: string;
+    reportType: string;
+    description: string;
+    evidence?: unknown;
+  }) => api.post('/threats/reports', data),
+
+  listReports: (params?: { status?: string; limit?: number; offset?: number }) =>
+    api.get<{ reports: CommunityReportItem[]; total: number }>('/threats/reports', { params }),
+
+  getStats: () =>
+    api.get<{
+      totalThreats: number;
+      totalReports: number;
+      verifiedThreats: number;
+      bySeverity: Record<string, number>;
+      byType: Record<string, number>;
+    }>('/threats/stats'),
+};
+
+export const alertsApi = {
+  list: (params?: { unreadOnly?: boolean; limit?: number; offset?: number }) =>
+    api.get<AlertItem[]>('/alerts', { params }),
+
+  markAsRead: (id: string) =>
+    api.patch<AlertItem>(`/alerts/${id}/read`),
+
+  delete: (id: string) =>
+    api.delete<{ success: boolean }>(`/alerts/${id}`),
+
+  getUnreadCount: () =>
+    api.get<{ count: number }>('/alerts/unread-count'),
+};
+
+export const differentialApi = {
+  compare: (extensionId: string, oldVersion: string, newVersion: string) =>
+    api.post<DifferentialAnalysisItem>('/differential/compare', {
+      extensionId,
+      oldVersion,
+      newVersion,
+    }),
+
+  getHistory: (extensionId: string) =>
+    api.get<DifferentialAnalysisItem[]>(`/differential/${extensionId}/history`),
+
+  getReport: (analysisId: string) =>
+    api.get<DifferentialAnalysisItem & { supply_chain_events?: SupplyChainEventItem[] }>(
+      `/differential/report/${analysisId}`
+    ),
+};
+
+export const networkApi = {
+  getLogs: (params?: { extensionId?: string; blocked?: boolean; limit?: number; offset?: number }) =>
+    api.get<{ logs: NetworkLogItem[]; total: number }>('/network/logs', { params }),
+
+  getStats: (extensionId?: string) =>
+    api.get<{
+      totalRequests: number;
+      blockedRequests: number;
+      suspiciousCount: number;
+      topDomains: Array<{ domain: string; count: number }>;
+    }>('/network/stats', { params: { extensionId } }),
+
+  getSuspicious: (extensionId?: string) =>
+    api.get<NetworkLogItem[]>('/network/suspicious', { params: { extensionId } }),
 };
 
 export default api;
