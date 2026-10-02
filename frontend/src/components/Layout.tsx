@@ -1,5 +1,5 @@
 import { Outlet, NavLink, useLocation } from 'react-router-dom';
-import { Shield, Search, List, Settings, Menu, X, Package, Activity, ShieldAlert } from 'lucide-react';
+import { Shield, Search, List, Settings, Menu, X, Package, Activity, ShieldAlert, GitCompare } from 'lucide-react';
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { healthApi } from '../lib/api';
@@ -11,9 +11,11 @@ const navigation = [
   { name: 'Scans', href: '/scans', icon: List },
   { name: 'Extensions', href: '/extensions', icon: Package },
   { name: 'Threat Intel', href: '/threats', icon: ShieldAlert },
+  { name: 'Version Diff', href: '/differential', icon: GitCompare },
   { name: 'Live Monitor', href: '/live', icon: Activity },
   { name: 'Settings', href: '/settings', icon: Settings },
 ];
+
 
 
 export function Layout() {

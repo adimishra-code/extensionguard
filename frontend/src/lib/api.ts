@@ -7,10 +7,10 @@ import type {
   ThreatIntelligenceItem,
   CommunityReportItem,
   DifferentialAnalysisItem,
-  SupplyChainEventItem,
   AlertItem,
   NetworkLogItem,
 } from '@extension-guard/shared';
+
 
 const TOKEN_KEY = 'eg_auth_token';
 
@@ -175,21 +175,27 @@ export const alertsApi = {
 };
 
 export const differentialApi = {
-  compare: (extensionId: string, oldVersion: string, newVersion: string) =>
-    api.post<DifferentialAnalysisItem>('/differential/compare', {
-      extensionId,
-      oldVersion,
-      newVersion,
-    }),
+  getLatest: (params?: { limit?: number; severity?: string }) =>
+    api.get<{ analyses: DifferentialAnalysisItem[]; count: number }>('/differential/latest', { params }),
 
-  getHistory: (extensionId: string) =>
-    api.get<DifferentialAnalysisItem[]>(`/differential/${extensionId}/history`),
+  getHighRisk: (params?: { limit?: number }) =>
+    api.get<{ analyses: DifferentialAnalysisItem[]; count: number }>('/differential/high-risk', { params }),
 
-  getReport: (analysisId: string) =>
-    api.get<DifferentialAnalysisItem & { supply_chain_events?: SupplyChainEventItem[] }>(
-      `/differential/report/${analysisId}`
+  getHistory: (extensionId: string, params?: { limit?: number }) =>
+    api.get<{ extensionId: string; history: DifferentialAnalysisItem[]; count: number }>(
+      `/differential/history/${extensionId}`,
+      { params }
+    ),
+
+  getById: (analysisId: string) =>
+    api.get<{ analysis: DifferentialAnalysisItem }>(`/differential/${analysisId}`),
+
+  compareLatest: (extensionId: string) =>
+    api.post<{ message: string; analysis: DifferentialAnalysisItem }>(
+      `/differential/compare-latest/${extensionId}`
     ),
 };
+
 
 export const networkApi = {
   getLogs: (params?: { extensionId?: string; blocked?: boolean; limit?: number; offset?: number }) =>
