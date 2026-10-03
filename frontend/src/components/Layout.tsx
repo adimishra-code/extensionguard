@@ -1,9 +1,11 @@
 import { Outlet, NavLink, useLocation } from 'react-router-dom';
-import { Shield, Search, List, Settings, Menu, X, Package, Activity, ShieldAlert, GitCompare } from 'lucide-react';
+import { Shield, Search, List, Settings, Menu, X, Package, Activity, ShieldAlert, GitCompare, Bell, Check } from 'lucide-react';
 import { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
-import { healthApi } from '../lib/api';
-import { cn } from '../lib/utils';
+
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { healthApi, alertsApi } from '../lib/api';
+import { cn, formatRelativeTime, getSeverityBadge } from '../lib/utils';
+import type { AlertItem } from '@extension-guard/shared';
 
 const navigation = [
   { name: 'Dashboard', href: '/dashboard', icon: Shield },
@@ -16,10 +18,10 @@ const navigation = [
   { name: 'Settings', href: '/settings', icon: Settings },
 ];
 
-
-
 export function Layout() {
+  const queryClient = useQueryClient();
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [alertsOpen, setAlertsOpen] = useState(false);
   const location = useLocation();
 
   const { data: health } = useQuery({
@@ -29,7 +31,24 @@ export function Layout() {
     retry: false,
   });
 
+  const { data: alertsData } = useQuery<AlertItem[]>({
+    queryKey: ['alerts', 'header'],
+    queryFn: () => alertsApi.list({ limit: 6 }).then((r) => r.data).catch(() => []),
+    refetchInterval: 20000,
+    retry: false,
+  });
+
+  const markReadMutation = useMutation({
+    mutationFn: (id: string) => alertsApi.markAsRead(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['alerts'] });
+    },
+  });
+
+  const alerts = alertsData || [];
+  const unreadAlerts = alerts.filter((a) => !a.read);
   const isHealthy = health?.status === 'ok';
+
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -119,9 +138,91 @@ export function Layout() {
                 {navigation.find(n => location.pathname === n.href || location.pathname.startsWith(n.href))?.name || 'ExtensionGuard'}
               </h1>
             </div>
-            <div className="flex items-center gap-4">
-              {/* Could be expanded with user profile dropdown */}
+            <div className="relative flex items-center gap-3">
+              <button
+                type="button"
+                onClick={() => setAlertsOpen(!alertsOpen)}
+                className="relative p-2 rounded-lg text-gray-500 hover:text-gray-900 hover:bg-gray-100 transition-colors"
+                aria-label="View security alerts"
+              >
+                <Bell className="h-5 w-5" />
+                {unreadAlerts.length > 0 && (
+                  <span className="absolute top-1.5 right-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-danger-600 text-[10px] font-bold text-white ring-2 ring-white">
+                    {unreadAlerts.length}
+                  </span>
+                )}
+              </button>
+
+              {/* Alerts Dropdown Drawer */}
+              {alertsOpen && (
+                <>
+                  <div
+                    className="fixed inset-0 z-30"
+                    onClick={() => setAlertsOpen(false)}
+                    aria-hidden="true"
+                  />
+                  <div className="absolute right-0 top-12 z-40 w-80 sm:w-96 rounded-xl bg-white shadow-xl ring-1 ring-black/5 p-4 space-y-3">
+                    <div className="flex items-center justify-between border-b border-gray-100 pb-2.5">
+                      <div className="flex items-center gap-2">
+                        <span className="font-semibold text-sm text-gray-900">Security Alerts</span>
+                        {unreadAlerts.length > 0 && (
+                          <span className="badge bg-danger-50 text-danger-700 text-xs">
+                            {unreadAlerts.length} new
+                          </span>
+                        )}
+                      </div>
+                      <button
+                        onClick={() => setAlertsOpen(false)}
+                        className="text-gray-400 hover:text-gray-600 text-xs"
+                      >
+                        Close
+                      </button>
+                    </div>
+
+                    <div className="max-h-80 overflow-y-auto divide-y divide-gray-100 space-y-1">
+                      {alerts.length > 0 ? (
+                        alerts.map((alert) => (
+                          <div
+                            key={alert.id}
+                            className={cn(
+                              'p-2.5 rounded-lg text-xs space-y-1 transition-colors',
+                              alert.read ? 'opacity-60 bg-gray-50/50' : 'bg-primary-50/30'
+                            )}
+                          >
+                            <div className="flex items-center justify-between">
+                              <span className={cn('badge text-[10px]', getSeverityBadge(alert.severity))}>
+                                {alert.severity}
+                              </span>
+                              <span className="text-[11px] text-gray-400">
+                                {formatRelativeTime(alert.created_at)}
+                              </span>
+                            </div>
+                            <h4 className="font-semibold text-gray-900 text-xs mt-1">{alert.title}</h4>
+                            <p className="text-gray-600 text-[11px] leading-relaxed">{alert.message}</p>
+                            {!alert.read && (
+                              <div className="pt-1 flex justify-end">
+                                <button
+                                  type="button"
+                                  onClick={() => markReadMutation.mutate(alert.id)}
+                                  className="text-[11px] text-primary-600 hover:text-primary-800 flex items-center gap-1 font-medium"
+                                >
+                                  <Check className="h-3 w-3" /> Mark read
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                        ))
+                      ) : (
+                        <div className="py-6 text-center text-xs text-gray-400">
+                          No active security alerts
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </>
+              )}
             </div>
+
           </div>
         </header>
 
