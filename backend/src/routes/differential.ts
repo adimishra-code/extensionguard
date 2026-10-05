@@ -50,7 +50,7 @@ export async function differentialRoutes(fastify: FastifyInstance) {
     preHandler: authenticate,
   }, async (request, reply) => {
     const { extensionId } = request.params as { extensionId: string };
-    const limit = parseInt((request.query as any).limit || '10', 10);
+    const limit = Math.min(parseInt((request.query as any).limit || '10', 10), 100);
 
     const history = await differentialAnalyzer.getAnalysisHistory(extensionId, limit);
 
@@ -86,7 +86,7 @@ export async function differentialRoutes(fastify: FastifyInstance) {
   fastify.get('/api/differential/latest', {
     preHandler: authenticate,
   }, async (request, reply) => {
-    const limit = parseInt((request.query as any).limit || '20', 10);
+    const limit = Math.min(parseInt((request.query as any).limit || '20', 10), 100);
     const severityFilter = (request.query as any).severity as string | undefined;
 
     const where = severityFilter
@@ -111,7 +111,7 @@ export async function differentialRoutes(fastify: FastifyInstance) {
   fastify.get('/api/differential/high-risk', {
     preHandler: authenticate,
   }, async (request, reply) => {
-    const limit = parseInt((request.query as any).limit || '10', 10);
+    const limit = Math.min(parseInt((request.query as any).limit || '10', 10), 100);
 
     const highRisk = await prisma.differentialAnalysis.findMany({
       where: {
