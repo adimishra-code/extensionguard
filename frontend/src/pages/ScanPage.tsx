@@ -12,11 +12,18 @@ const scanTypes: { value: ScanType; label: string; description: string; icon: Re
   { value: 'full', label: 'Full Analysis', description: 'All of the above combined (~10-15min)', icon: CheckCircle },
 ];
 
+const ACCEPTED_TYPES = ['.zip', '.crx'];
+
+function isValidExtension(file: File): boolean {
+  return ACCEPTED_TYPES.some(ext => file.name.toLowerCase().endsWith(ext));
+}
+
 export function ScanPage() {
   const queryClient = useQueryClient();
   const [file, setFile] = useState<File | null>(null);
   const [scanType, setScanType] = useState<ScanType>('quick');
   const [dragActive, setDragActive] = useState(false);
+  const [fileError, setFileError] = useState<string | null>(null);
 
   const { mutate: createScan, isPending, error } = useMutation({
     mutationFn: ({ file, scanType }: { file: File; scanType: ScanType }) => 
@@ -42,14 +49,26 @@ export function ScanPage() {
     e.preventDefault();
     e.stopPropagation();
     setDragActive(false);
-    if (e.dataTransfer.files[0]) {
-      setFile(e.dataTransfer.files[0]);
+    const dropped = e.dataTransfer.files[0];
+    if (dropped) {
+      if (!isValidExtension(dropped)) {
+        setFileError('Only .zip and .crx files are supported.');
+        return;
+      }
+      setFileError(null);
+      setFile(dropped);
     }
   };
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files?.[0]) {
-      setFile(e.target.files[0]);
+    const selected = e.target.files?.[0];
+    if (selected) {
+      if (!isValidExtension(selected)) {
+        setFileError('Only .zip and .crx files are supported.');
+        return;
+      }
+      setFileError(null);
+      setFile(selected);
     }
   };
 
@@ -60,7 +79,7 @@ export function ScanPage() {
     }
   };
 
-  const removeFile = () => setFile(null);
+  const removeFile = () => { setFile(null); setFileError(null); };
 
   return (
     <div className="max-w-3xl mx-auto space-y-6">
@@ -156,11 +175,11 @@ export function ScanPage() {
           </div>
         </div>
 
-        {error && (
+        {(fileError || error) && (
           <div className="card p-4 border-danger-200 bg-danger-50">
             <div className="flex items-center gap-3 text-danger-700">
               <AlertCircle className="h-5 w-5 flex-shrink-0" />
-              <p>{(error as any)?.response?.data?.error || (error instanceof Error ? error.message : 'Failed to create scan')}</p>
+              <p>{fileError || (error as any)?.response?.data?.error || (error instanceof Error ? error.message : 'Failed to create scan')}</p>
             </div>
           </div>
         )}
