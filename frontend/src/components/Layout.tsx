@@ -97,7 +97,7 @@ export function Layout() {
         </nav>
         <div className="p-4 border-t border-gray-200">
           <div className="flex items-center justify-between">
-            <p className="text-xs text-gray-500">v1.0.0</p>
+            <p className="text-xs text-gray-500">v1.0.1</p>
             <div className="flex items-center gap-1.5">
               <div className={cn(
                 'h-2 w-2 rounded-full',

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Activity, AlertTriangle, Shield, TrendingUp, Radio } from 'lucide-react';
 import { cn } from '../lib/utils';
 
@@ -29,48 +29,65 @@ export function LiveMonitoring() {
   const [events, setEvents] = useState<RecentEvent[]>([]);
   const [connected, setConnected] = useState(false);
 
+  const retryDelay = useRef(1000);
+  const retryTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const wsRef = useRef<WebSocket | null>(null);
+  const destroyed = useRef(false);
+
   useEffect(() => {
-    // Connect to WebSocket for live updates
-    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    let host = window.location.host;
-    const apiUrl = import.meta.env.VITE_API_URL;
-    if (apiUrl) {
-      try {
-        host = new URL(apiUrl).host;
-      } catch {
-        // keep fallback
+    destroyed.current = false;
+
+    function getWsUrl() {
+      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+      let host = window.location.host;
+      const apiUrl = import.meta.env.VITE_API_URL;
+      if (apiUrl) {
+        try {
+          host = new URL(apiUrl).host;
+        } catch {
+          // keep fallback
+        }
+      } else if (window.location.port === '5173') {
+        host = `${window.location.hostname}:3001`;
       }
-    } else if (window.location.port === '5173') {
-      host = `${window.location.hostname}:3001`;
+      const token = localStorage.getItem('token') || localStorage.getItem('auth_token');
+      return `${protocol}//${host}/ws${token ? `?token=${encodeURIComponent(token)}` : ''}`;
     }
-    const token = localStorage.getItem('token') || localStorage.getItem('auth_token');
-    const wsUrl = `${protocol}//${host}/ws${token ? `?token=${encodeURIComponent(token)}` : ''}`;
-    const ws = new WebSocket(wsUrl);
 
-    ws.onopen = () => {
-      console.log('Connected to live monitoring');
-      setConnected(true);
-    };
+    function connect() {
+      if (destroyed.current) return;
+      const ws = new WebSocket(getWsUrl());
+      wsRef.current = ws;
 
-    ws.onmessage = (event) => {
-      const data = JSON.parse(event.data);
+      ws.onopen = () => {
+        console.log('Connected to live monitoring');
+        retryDelay.current = 1000;
+        setConnected(true);
+      };
 
-      if (data.type === 'stats_update') {
-        setStats(data.stats);
-      }
+      ws.onmessage = (event) => {
+        const data = JSON.parse(event.data);
+        if (data.type === 'stats_update') setStats(data.stats);
+        if (data.type === 'new_event') setEvents((prev) => [data.event, ...prev].slice(0, 50));
+      };
 
-      if (data.type === 'new_event') {
-        setEvents((prev) => [data.event, ...prev].slice(0, 50));
-      }
-    };
+      ws.onclose = () => {
+        if (destroyed.current) return;
+        console.log(`Disconnected — reconnecting in ${retryDelay.current}ms`);
+        setConnected(false);
+        retryTimer.current = setTimeout(() => {
+          retryDelay.current = Math.min(retryDelay.current * 2, 30000);
+          connect();
+        }, retryDelay.current);
+      };
+    }
 
-    ws.onclose = () => {
-      console.log('Disconnected from live monitoring');
-      setConnected(false);
-    };
+    connect();
 
     return () => {
-      ws.close();
+      destroyed.current = true;
+      if (retryTimer.current) clearTimeout(retryTimer.current);
+      wsRef.current?.close();
     };
   }, []);
 
