@@ -45,7 +45,7 @@ export class CWSScraperService {
 
       // TODO: Implement actual CWS scraping with Playwright
       // For now, return mock data structure
-      const _cwsUrl = `https://chrome.google.com/webstore/detail/${extensionId}`;
+      const _cwsUrl = `https://chromewebstore.google.com/detail/${extensionId}`;
 
       // In real implementation:
       // 1. Launch Playwright browser

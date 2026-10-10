@@ -173,11 +173,18 @@ export class MonitorProcessor {
     const isSuspicious = await this.checkSuspiciousDomain(event.url);
 
     if (isSuspicious) {
+      let domain = event.url;
+      try {
+        domain = new URL(event.url).hostname;
+      } catch {
+        // Fallback to raw URL if parsing fails
+      }
+
       const message: ServerMessage = {
         type: 'alert',
         extensionId: event.extensionId,
         severity: 'high',
-        message: `Extension contacted suspicious domain: ${new URL(event.url).hostname}`,
+        message: `Extension contacted suspicious domain: ${domain}`,
         actionRequired: true,
         timestamp: Date.now(),
       };

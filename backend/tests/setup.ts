@@ -39,6 +39,27 @@ vi.mock('../src/utils/prisma', () => ({
     differentialAnalysis: {
       create: vi.fn(),
       findUnique: vi.fn(),
+      findMany: vi.fn(),
+    },
+    monitoringEvent: {
+      create: vi.fn(),
+      findMany: vi.fn(),
+    },
+    cWSMetadata: {
+      upsert: vi.fn(),
+      findUnique: vi.fn(),
+      findMany: vi.fn(),
+      count: vi.fn(),
+    },
+    supplyChainEvent: {
+      create: vi.fn(),
+      findMany: vi.fn(),
+    },
+    communityReport: {
+      findUnique: vi.fn(),
+      findMany: vi.fn(),
+      create: vi.fn(),
+      update: vi.fn(),
     },
     user: {
       findUnique: vi.fn(),

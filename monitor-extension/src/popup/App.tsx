@@ -365,7 +365,10 @@ function App() {
                 <input
                   type="number"
                   value={config.scanFrequency}
-                  onChange={(e) => setConfig({ ...config, scanFrequency: parseInt(e.target.value) })}
+                  onChange={(e) => {
+                    const parsed = parseInt(e.target.value, 10);
+                    setConfig({ ...config, scanFrequency: Number.isNaN(parsed) ? 5 : parsed });
+                  }}
                   min="5"
                   max="1440"
                   className="w-full px-3 py-2 border rounded text-sm"
