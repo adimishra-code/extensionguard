@@ -15,7 +15,6 @@
     "noUncheckedIndexedAccess": true,
     "declaration": true,
     "declarationMap": true,
-    "baseUrl": ".",
     "paths": {
       "@extension-guard/shared": ["../shared/dist"]
     }

@@ -10,7 +10,7 @@ services:
     name: extensionguard-api
     env: node
     plan: free
-    buildCommand: npm ci && npm run build --workspaces && npm run db:deploy
+    buildCommand: npm ci && npm run build --workspace=shared && npm run build --workspace=backend && npm run db:deploy
     startCommand: npm run start
     envVars:
       - key: NODE_ENV
