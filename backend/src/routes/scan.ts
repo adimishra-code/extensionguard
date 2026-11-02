@@ -171,7 +171,7 @@ export async function scanRoutes(fastify: FastifyInstance) {
         enable_runtime: scanType === 'sandbox' || scanType === 'full',
         enable_network: scanType === 'deep' || scanType === 'full',
         enable_data_flow: scanType === 'deep' || scanType === 'full',
-        enable_llm: false,
+        enable_llm: scanType === 'full' || scanType === 'deep',
         runtime_timeout_seconds: 120,
         max_file_size_mb: 50,
         rulesets: ['owasp', 'malware', 'privacy'],
@@ -341,12 +341,12 @@ export async function scanRoutes(fastify: FastifyInstance) {
       risk_scores: scan.risk_scores,
       limitations: [
         'Static analysis cannot confirm runtime behavior',
-        scan.type === 'sandbox' 
+        scan.type === 'sandbox' || scan.type === 'full'
           ? 'Dynamic analysis completed in isolated browser sandbox'
           : 'Dynamic analysis was not performed (enable sandbox mode for runtime analysis)',
         'Network analysis limited to static URL extraction for non-sandbox scans',
         'Data flow analysis is heuristic-based',
-        'LLM analysis not enabled',
+        scan.llm_model ? `LLM Security Assessment powered by ${scan.llm_provider || 'analyst'} (${scan.llm_model})` : 'LLM analysis skipped',
       ],
     };
     

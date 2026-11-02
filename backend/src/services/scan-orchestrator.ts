@@ -2,6 +2,7 @@ import { prisma } from '../utils/prisma';
 import { analyzeManifest, ManifestAnalysisResult } from './manifest-analyzer';
 import { analyzeStatic, StaticAnalysisResult } from './static-analyzer';
 import { analyzeSandbox, SandboxAnalysisResult } from './sandbox-analyzer';
+import { llmAnalyzer } from './llm-analyzer';
 import { Finding, Evidence, NetworkEvent, CodeFinding, RiskScores, PermissionRisk, Severity, FindingCategory, Confidence } from '@extension-guard/shared';
 import { v4 as uuidv4 } from 'uuid';
 import { logger } from '../utils/logger';
@@ -12,7 +13,8 @@ function calculateRiskScores(
     manifestAnalysis: ManifestAnalysisResult,
     staticAnalysis: StaticAnalysisResult,
     sandboxAnalysis: SandboxAnalysisResult,
-    hasRuntimeEnabled: boolean = false
+    hasRuntimeEnabled: boolean = false,
+    purposeMismatchScore: number = 0
   ): RiskScores {
     let permissionScore = 0;
     let codeScore = 0;
@@ -84,16 +86,40 @@ function calculateRiskScores(
           exfiltrationScore * 0.15 +
           networkScore * 0.10 +
           obfuscationScore * 0.05 +
-          runtimeScore * 0.25
+          runtimeScore * 0.20 +
+          purposeMismatchScore * 0.05
         )
       : Math.round(
           permissionScore * 0.20 +
           codeScore * 0.25 +
           dataAccessScore * 0.15 +
-          exfiltrationScore * 0.20 +
+          exfiltrationScore * 0.15 +
           networkScore * 0.10 +
-          obfuscationScore * 0.10
+          obfuscationScore * 0.10 +
+          purposeMismatchScore * 0.05
         );
+
+    const breakdownItems = [
+      { category: 'permission_risk' as FindingCategory, score: Math.round(permissionScore), finding_count: manifestAnalysis.permissionRisks.length, max_severity: getMaxSeverity(manifestAnalysis.permissionRisks.map(p => p.risk_level)) },
+      { category: 'dangerous_api' as FindingCategory, score: Math.round(codeScore), finding_count: staticAnalysis.codeFindings.filter(c => mapCategory(c.category) === 'dangerous_api').length, max_severity: getMaxSeverity(staticAnalysis.codeFindings.filter(c => mapCategory(c.category) === 'dangerous_api').map(c => c.severity)) },
+      { category: 'data_access' as FindingCategory, score: Math.round(dataAccessScore), finding_count: staticAnalysis.codeFindings.filter(c => mapCategory(c.category) === 'data_access').length, max_severity: getMaxSeverity(staticAnalysis.codeFindings.filter(c => mapCategory(c.category) === 'data_access').map(c => c.severity)) },
+      { category: 'network_exfiltration' as FindingCategory, score: Math.round(exfiltrationScore), finding_count: staticAnalysis.codeFindings.filter(c => mapCategory(c.category) === 'network_exfiltration').length, max_severity: getMaxSeverity(staticAnalysis.codeFindings.filter(c => mapCategory(c.category) === 'network_exfiltration').map(c => c.severity)) },
+      { category: 'obfuscation' as FindingCategory, score: Math.round(obfuscationScore), finding_count: staticAnalysis.codeFindings.filter(c => mapCategory(c.category) === 'obfuscation').length, max_severity: getMaxSeverity(staticAnalysis.codeFindings.filter(c => mapCategory(c.category) === 'obfuscation').map(c => c.severity)) },
+      { category: 'runtime_behavior' as FindingCategory, score: Math.round(runtimeScore), finding_count: sandboxAnalysis.networkEvents.length + sandboxAnalysis.evidences.length, max_severity: getMaxSeverity([...sandboxAnalysis.networkEvents.map(e => e.risk_level as Severity), ...sandboxAnalysis.evidences.map(e => 
+        e.confidence === 'confirmed' ? 'high' as Severity :
+        e.confidence === 'likely' ? 'medium' as Severity :
+        e.confidence === 'potential' ? 'low' as Severity :
+        'info' as Severity)].filter((v): v is Severity => ['info', 'low', 'medium', 'high', 'critical'].includes(v))) }
+    ];
+
+    if (purposeMismatchScore > 0) {
+      breakdownItems.push({
+        category: 'purpose_mismatch' as FindingCategory,
+        score: Math.round(purposeMismatchScore),
+        finding_count: 1,
+        max_severity: purposeMismatchScore >= 70 ? 'critical' : purposeMismatchScore >= 40 ? 'high' : 'medium',
+      });
+    }
 
     return {
       scan_id: '',
@@ -105,21 +131,10 @@ function calculateRiskScores(
       network_score: Math.round(networkScore),
       obfuscation_score: Math.round(obfuscationScore),
       dependency_score: 0,
-      purpose_mismatch_score: 0,
+      purpose_mismatch_score: Math.round(purposeMismatchScore),
       runtime_score: Math.round(runtimeScore),
       confidence: 0.85,
-      breakdown: [
-        { category: 'permission_risk', score: Math.round(permissionScore), finding_count: manifestAnalysis.permissionRisks.length, max_severity: getMaxSeverity(manifestAnalysis.permissionRisks.map(p => p.risk_level)) },
-        { category: 'dangerous_api', score: Math.round(codeScore), finding_count: staticAnalysis.codeFindings.filter(c => mapCategory(c.category) === 'dangerous_api').length, max_severity: getMaxSeverity(staticAnalysis.codeFindings.filter(c => mapCategory(c.category) === 'dangerous_api').map(c => c.severity)) },
-        { category: 'data_access', score: Math.round(dataAccessScore), finding_count: staticAnalysis.codeFindings.filter(c => mapCategory(c.category) === 'data_access').length, max_severity: getMaxSeverity(staticAnalysis.codeFindings.filter(c => mapCategory(c.category) === 'data_access').map(c => c.severity)) },
-        { category: 'network_exfiltration', score: Math.round(exfiltrationScore), finding_count: staticAnalysis.codeFindings.filter(c => mapCategory(c.category) === 'network_exfiltration').length, max_severity: getMaxSeverity(staticAnalysis.codeFindings.filter(c => mapCategory(c.category) === 'network_exfiltration').map(c => c.severity)) },
-        { category: 'obfuscation', score: Math.round(obfuscationScore), finding_count: staticAnalysis.codeFindings.filter(c => mapCategory(c.category) === 'obfuscation').length, max_severity: getMaxSeverity(staticAnalysis.codeFindings.filter(c => mapCategory(c.category) === 'obfuscation').map(c => c.severity)) },
-        { category: 'runtime_behavior', score: Math.round(runtimeScore), finding_count: sandboxAnalysis.networkEvents.length + sandboxAnalysis.evidences.length, max_severity: getMaxSeverity([...sandboxAnalysis.networkEvents.map(e => e.risk_level as Severity), ...sandboxAnalysis.evidences.map(e => 
-          e.confidence === 'confirmed' ? 'high' as Severity :
-          e.confidence === 'likely' ? 'medium' as Severity :
-          e.confidence === 'potential' ? 'low' as Severity :
-          'info' as Severity)].filter((v): v is Severity => ['info', 'low', 'medium', 'high', 'critical'].includes(v))) }
-      ],
+      breakdown: breakdownItems,
     };
   }
 
@@ -179,12 +194,18 @@ async function persistResults(
     networkEvents: NetworkEvent[],
     codeFindings: CodeFinding[],
     dataFlows: any[],
-    permissionRisks: PermissionRisk[]
+    permissionRisks: PermissionRisk[],
+    llmInfo?: { model: string; provider: string }
   ) {
     await prisma.$transaction(async (tx) => {
       await tx.scan.update({
         where: { id: scanId },
-        data: { status: 'completed', completed_at: new Date() },
+        data: {
+          status: 'completed',
+          completed_at: new Date(),
+          llm_model: llmInfo?.model || null,
+          llm_provider: llmInfo?.provider || null,
+        },
       });
 
       await tx.finding.createMany({ data: findings as any });
@@ -407,7 +428,60 @@ export async function processScanJob(jobData: ScanJobData): Promise<void> {
       evidence_ids: pr.evidence_ids,
     }));
 
-    const riskScores = calculateRiskScores(manifestAnalysis, staticAnalysis, sandboxAnalysis, scanConfig.enableRuntime);
+    // Run LLM Security Assessment if enabled or full/deep scan
+    let llmInfo: { model: string; provider: string } | undefined;
+    let purposeMismatchScore = 0;
+
+    if (scanConfig.enableLLM || scanType === 'full' || scanType === 'deep') {
+      try {
+        const ext = await prisma.extension.findUnique({ where: { id: extensionId } });
+        const manifest = (ext?.manifest_json as any) || {};
+
+        const llmResult = await llmAnalyzer.analyze({
+          extension: {
+            name: ext?.name || manifest.name || 'Extension',
+            version: ext?.version || manifest.version || '1.0.0',
+          },
+          permissions: permissionRisks,
+          code_findings: codeFindings,
+          network_findings: networkEvents,
+          data_flows: staticAnalysis.dataFlows,
+          runtime_events: sandboxAnalysis.networkEvents,
+          purpose: manifest.description || ext?.name || '',
+        });
+
+        llmInfo = { model: llmResult.model, provider: llmResult.provider };
+        purposeMismatchScore = llmResult.purposeMismatchScore;
+
+        // Add any behavioral mismatches to findings
+        for (const mismatch of llmResult.output.behavioral_mismatch) {
+          findings.push({
+            id: uuidv4(),
+            scan_id: scanId,
+            category: 'purpose_mismatch',
+            severity: llmResult.output.risk_assessment.severity,
+            confidence: llmResult.output.risk_assessment.confidence,
+            title: 'Behavioral Purpose Mismatch',
+            description: mismatch.description,
+            technical_details: `Semantic LLM audit discovered discrepancy between stated purpose and observed code/permissions: ${mismatch.description}`,
+            recommendation: llmResult.output.recommended_actions[0] || 'Review declared extension permissions.',
+            limitations: llmResult.output.uncertainties.join('; ') || 'Semantic analysis heuristic.',
+            evidence_ids: mismatch.evidence_ids,
+            created_at: new Date().toISOString(),
+          });
+        }
+      } catch (llmErr) {
+        logger_.warn({ llmErr }, 'LLM analysis skipped or failed');
+      }
+    }
+
+    const riskScores = calculateRiskScores(
+      manifestAnalysis,
+      staticAnalysis,
+      sandboxAnalysis,
+      scanConfig.enableRuntime,
+      purposeMismatchScore
+    );
     riskScores.scan_id = scanId;
 
     await persistResults(
@@ -422,7 +496,8 @@ export async function processScanJob(jobData: ScanJobData): Promise<void> {
       networkEvents,
       codeFindings,
       dataFlows,
-      permissionRisks
+      permissionRisks,
+      llmInfo
     );
 
     logger_.info({ findingsCount: findings.length }, 'Scan job completed successfully');

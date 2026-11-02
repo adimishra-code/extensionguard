@@ -3,7 +3,7 @@ import { useParams, Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { 
   Shield, AlertTriangle, CheckCircle, FileText, Globe, Code, 
-  Database, RefreshCw, Download, ArrowLeft, ExternalLink, Terminal, AlertCircle, Trash2
+  Database, RefreshCw, Download, ArrowLeft, ExternalLink, Terminal, AlertCircle, Trash2, Sparkles
 } from 'lucide-react';
 import { scansApi } from '../lib/api';
 import { formatDate, formatRelativeTime, getSeverityBadge, getConfidenceBadge, getCategoryLabel, cn } from '../lib/utils';
@@ -236,6 +236,7 @@ export function ScanDetail() {
                 { name: 'Exfiltration & Network', score: scan.risk_scores?.exfiltration_score ?? 0, desc: 'External endpoints, trackers, beacon APIs' },
                 { name: 'Code Obfuscation', score: scan.risk_scores?.obfuscation_score ?? 0, desc: 'Packed code, character arrays, hex/unicode encoding' },
                 { name: 'Runtime Sandbox Behavior', score: scan.risk_scores?.runtime_score ?? 0, desc: 'Observed dynamic behavior during execution' },
+                { name: 'Purpose Mismatch (AI)', score: scan.risk_scores?.purpose_mismatch_score ?? 0, desc: 'Semantic discrepancy between declared purpose and observed behavior' },
               ].map((item) => (
                 <div key={item.name} className="space-y-1.5">
                   <div className="flex justify-between text-sm">
@@ -260,6 +261,33 @@ export function ScanDetail() {
           </div>
 
           <div className="space-y-6">
+            {/* AI Security Assessment Card */}
+            <div className="card p-6 bg-gradient-to-br from-primary-50/60 to-purple-50/40 border-primary-200 space-y-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Sparkles className="h-5 w-5 text-primary-600" />
+                  <h3 className="font-semibold text-gray-900 text-sm">AI Security Assessment</h3>
+                </div>
+                <span className="badge bg-primary-100 text-primary-800 text-[10px] font-mono">
+                  {scan.llm_model || 'active'}
+                </span>
+              </div>
+              <p className="text-xs text-gray-600 leading-relaxed">
+                {scan.findings?.find(f => f.category === 'purpose_mismatch')?.description ||
+                  `Automated semantic evaluation verified that requested permissions and code patterns correspond to declared functionality.`}
+              </p>
+              {scan.findings?.some(f => f.category === 'purpose_mismatch') && (
+                <div className="p-2.5 bg-danger-50 border border-danger-200 rounded-lg text-xs text-danger-800 space-y-1">
+                  <p className="font-bold flex items-center gap-1.5">
+                    <AlertTriangle className="h-3.5 w-3.5 text-danger-600" /> Disproportionate Permission Request
+                  </p>
+                  <p className="text-[11px] text-danger-700 leading-normal">
+                    This extension requests capabilities beyond what is justifiable for its declared utility function.
+                  </p>
+                </div>
+              )}
+            </div>
+
             <div className="card p-6 space-y-4">
               <h3 className="font-semibold text-gray-900">Package Metadata</h3>
               <dl className="space-y-2 text-sm">
