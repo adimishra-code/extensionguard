@@ -20,6 +20,24 @@ export class LLMAnalyzerService {
 
     const geminiKey = process.env.GEMINI_API_KEY || config.GEMINI_API_KEY;
     const openaiKey = process.env.OPENAI_API_KEY || config.OPENAI_API_KEY;
+    const openrouterKey = process.env.OPENROUTER_API_KEY || config.OPENROUTER_API_KEY;
+
+    if (openrouterKey) {
+      try {
+        const result = await this.analyzeWithOpenRouter(input, openrouterKey);
+        if (result) {
+          logger_.info('Completed analysis with OpenRouter');
+          return {
+            output: result,
+            provider: 'openrouter',
+            model: process.env.OPENROUTER_MODEL || config.OPENROUTER_MODEL || 'meta-llama/llama-3.3-70b-instruct',
+            purposeMismatchScore: this.calculateMismatchScore(result),
+          };
+        }
+      } catch (err) {
+        logger_.warn({ err }, 'OpenRouter analysis failed, falling back to next provider');
+      }
+    }
 
     if (geminiKey) {
       try {
@@ -148,6 +166,54 @@ export class LLMAnalyzerService {
     if (!content) return null;
 
     return JSON.parse(content) as LLMAnalysisOutput;
+  }
+
+  /**
+   * OpenRouter API integration (Supports Llama 3.3, DeepSeek, Claude, Gemini via OpenRouter)
+   */
+  private async analyzeWithOpenRouter(input: LLMAnalysisInput, apiKey: string): Promise<LLMAnalysisOutput | null> {
+    const url = 'https://openrouter.ai/api/v1/chat/completions';
+    const model = process.env.OPENROUTER_MODEL || config.OPENROUTER_MODEL || 'meta-llama/llama-3.3-70b-instruct';
+    const prompt = this.buildPrompt(input);
+
+    const body = {
+      model,
+      response_format: { type: 'json_object' },
+      temperature: 0.2,
+      messages: [
+        {
+          role: 'system',
+          content: 'You are a principal browser extension security analyst. You must evaluate the extension code, permissions, and network activity vs claimed purpose. Output strictly valid JSON adhering to the required schema.',
+        },
+        {
+          role: 'user',
+          content: prompt,
+        },
+      ],
+    };
+
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiKey}`,
+        'HTTP-Referer': 'https://extensionguard.io',
+        'X-Title': 'Extension Guard Security Platform',
+      },
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(30000),
+    });
+
+    if (!res.ok) {
+      throw new Error(`OpenRouter API returned HTTP ${res.status}: ${await res.text()}`);
+    }
+
+    const data = await res.json() as any;
+    const content = data?.choices?.[0]?.message?.content;
+    if (!content) return null;
+
+    const cleanJson = content.replace(/^```json\s*/i, '').replace(/\s*```$/i, '').trim();
+    return JSON.parse(cleanJson) as LLMAnalysisOutput;
   }
 
   /**

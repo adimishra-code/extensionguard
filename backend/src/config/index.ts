@@ -18,8 +18,10 @@ const envSchema = z.object({
   RULESET_VERSION: z.string().default('1.0.0'),
   GEMINI_API_KEY: z.string().optional(),
   OPENAI_API_KEY: z.string().optional(),
+  OPENROUTER_API_KEY: z.string().optional(),
+  OPENROUTER_MODEL: z.string().default('meta-llama/llama-3.3-70b-instruct'),
   ANTHROPIC_API_KEY: z.string().optional(),
-  LLM_PROVIDER: z.enum(['gemini', 'openai', 'anthropic', 'heuristic']).default('heuristic'),
+  LLM_PROVIDER: z.enum(['gemini', 'openai', 'openrouter', 'anthropic', 'heuristic']).default('heuristic'),
   LLM_MODEL: z.string().default('gemini-1.5-flash'),
 });
 

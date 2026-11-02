@@ -15,7 +15,9 @@
     "lint": "npm run lint --workspaces",
     "test": "npm run test --workspaces",
     "db:migrate": "npm run db:migrate --workspace=backend",
+    "db:deploy": "npm run db:deploy --workspace=backend",
     "db:seed": "npm run db:seed --workspace=backend",
+    "start": "npm run start --workspace=backend",
     "scan": "tsx scripts/scan_cli.ts",
     "scan:deep": "tsx scripts/scan_cli.ts --deep"
   },

@@ -14,8 +14,12 @@ import type {
 
 const TOKEN_KEY = 'eg_auth_token';
 
+const apiBase = import.meta.env.VITE_API_URL
+  ? `${import.meta.env.VITE_API_URL.replace(/\/+$/, '')}/api`
+  : '/api';
+
 export const api = axios.create({
-  baseURL: '/api',
+  baseURL: apiBase,
   // 15 minutes — sandbox scans can take up to 10 minutes
   timeout: 900000,
 });

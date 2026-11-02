@@ -1,0 +1,59 @@
+services:
+  # ─── Backend Fastify Security API ─────────────────────────────────────────
+  - type: web
+    name: extensionguard-api
+    env: node
+    plan: free
+    buildCommand: npm ci && npm run build --workspaces && npm run db:deploy
+    startCommand: npm run start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 10000
+      - key: HOST
+        value: 0.0.0.0
+      - key: DATABASE_URL
+        fromDatabase:
+          name: extensionguard-db
+          property: connectionString
+      - key: REDIS_URL
+        fromService:
+          type: redis
+          name: extensionguard-redis
+          property: connectionString
+      - key: JWT_SECRET
+        generateValue: true
+      - key: FRONTEND_URL
+        fromService:
+          type: web
+          name: extensionguard-web
+          property: url
+
+  # ─── Frontend React Dashboard ─────────────────────────────────────────────
+  - type: web
+    name: extensionguard-web
+    env: static
+    buildCommand: npm ci && npm run build --workspace=frontend
+    staticPublishPath: frontend/dist
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
+    envVars:
+      - key: VITE_API_URL
+        fromService:
+          type: web
+          name: extensionguard-api
+          property: url
+
+# ─── Managed Cloud PostgreSQL ───────────────────────────────────────────────
+databases:
+  - name: extensionguard-db
+    plan: free
+
+# ─── Managed Cloud Redis ───────────────────────────────────────────────────
+redis:
+  - name: extensionguard-redis
+    plan: free
+    ipAllowList: []

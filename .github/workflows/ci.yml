@@ -40,3 +40,4 @@ jobs:
 
       - name: Verify CLI Security Scanner
         run: npm run scan -- tests/fixtures/sample-extension --json
+
