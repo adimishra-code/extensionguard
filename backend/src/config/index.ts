@@ -13,7 +13,7 @@ const envSchema = z.object({
   ANALYZER_TIMEOUT_MS: z.coerce.number().default(300000),
   SANDBOX_TIMEOUT_MS: z.coerce.number().default(600000),
   LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace']).default('info'),
-  FRONTEND_URL: z.string().url().default('http://localhost:5173'),
+  FRONTEND_URL: z.string().optional().default('http://localhost:5173'),
   ANALYZER_VERSION: z.string().default('1.0.0'),
   RULESET_VERSION: z.string().default('1.0.0'),
   GEMINI_API_KEY: z.string().optional(),

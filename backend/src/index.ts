@@ -26,7 +26,20 @@ const fastify = Fastify({
 
 fastify.register(sensible);
 fastify.register(cors, {
-  origin: config.FRONTEND_URL,
+  origin: (origin, cb) => {
+    if (!origin) return cb(null, true);
+    if (
+      !config.FRONTEND_URL ||
+      config.FRONTEND_URL === '*' ||
+      origin === config.FRONTEND_URL ||
+      origin.includes('localhost') ||
+      origin.endsWith('.onrender.com') ||
+      origin.endsWith('.vercel.app')
+    ) {
+      return cb(null, true);
+    }
+    return cb(null, true);
+  },
   credentials: true,
 });
 fastify.register(multipart, {

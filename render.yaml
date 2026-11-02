@@ -31,10 +31,11 @@ services:
       - key: JWT_SECRET
         generateValue: true
       - key: FRONTEND_URL
-        fromService:
-          type: web
-          name: extensionguard-web
-          property: url
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: OPENROUTER_API_KEY
+        sync: false
 
   # ─── Frontend React Dashboard ─────────────────────────────────────────────
   - type: web
@@ -48,10 +49,7 @@ services:
         destination: /index.html
     envVars:
       - key: VITE_API_URL
-        fromService:
-          type: web
-          name: extensionguard-api
-          property: url
+        sync: false
 
 # ─── Managed Cloud PostgreSQL ───────────────────────────────────────────────
 databases:
