@@ -3,7 +3,7 @@ import { useParams, Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { 
   Shield, AlertTriangle, CheckCircle, FileText, Globe, Code, 
-  Database, RefreshCw, Download, ArrowLeft, ExternalLink, Terminal, AlertCircle, Trash2, Sparkles
+  Database, RefreshCw, Download, ArrowLeft, ExternalLink, Terminal, AlertCircle, Trash2, Sparkles, GitFork, ArrowRight
 } from 'lucide-react';
 import { scansApi } from '../lib/api';
 import { formatDate, formatRelativeTime, getSeverityBadge, getConfidenceBadge, getCategoryLabel, cn } from '../lib/utils';
@@ -12,7 +12,7 @@ import type { Finding, Severity } from '@extension-guard/shared';
 export function ScanDetail() {
   const { id } = useParams<{ id: string }>();
   const queryClient = useQueryClient();
-  const [activeTab, setActiveTab] = useState<'overview' | 'findings' | 'permissions' | 'network' | 'code' | 'evidence'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'findings' | 'permissions' | 'network' | 'code' | 'data-flows' | 'evidence'>('overview');
   const [selectedSeverity, setSelectedSeverity] = useState<string>('all');
 
   const { data: scan, isLoading, isError, error, refetch } = useQuery({
@@ -192,6 +192,7 @@ export function ScanDetail() {
             { key: 'permissions', label: 'Permissions & Hosts', icon: Globe, count: scan.permission_risks?.length },
             { key: 'network', label: 'Network Events', icon: ExternalLink, count: scan.network_events?.length },
             { key: 'code', label: 'Code Findings', icon: Code, count: scan.code_findings?.length },
+            { key: 'data-flows', label: 'Data Flows', icon: GitFork, count: scan.data_flows?.length },
             { key: 'evidence', label: 'Raw Evidence', icon: Database, count: scan.evidence?.length },
           ].map((tab) => {
             const Icon = tab.icon;
@@ -534,6 +535,95 @@ export function ScanDetail() {
               </tbody>
             </table>
           </div>
+        </div>
+      )}
+
+      {/* Tab: Data Flows */}
+      {activeTab === 'data-flows' && (
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="text-lg font-semibold text-gray-900">Source-to-Sink Data Exfiltration Flows</h2>
+              <p className="text-xs text-gray-500 mt-0.5">
+                AST analysis tracking sensitive internal variables (cookies, tokens, storage) into network transmitters.
+              </p>
+            </div>
+            <span className="badge bg-purple-100 text-purple-800 text-xs font-medium">
+              {(scan.data_flows || []).length} flow{(scan.data_flows || []).length === 1 ? '' : 's'} tracked
+            </span>
+          </div>
+
+          {(scan.data_flows || []).length === 0 ? (
+            <div className="card p-12 text-center text-gray-500 space-y-2">
+              <CheckCircle className="h-10 w-10 text-success-500 mx-auto" />
+              <p className="text-sm font-semibold text-gray-900">No direct source-to-sink data exfiltration detected.</p>
+              <p className="text-xs text-gray-500">Sensitive storage APIs do not transmit directly into observed network sinks.</p>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {scan.data_flows?.map((df: any) => {
+                const src = df.source || df.source_json || {};
+                const snk = df.sink || df.sink_json || {};
+                return (
+                  <div key={df.id} className="card p-5 border border-purple-200 bg-white shadow-sm space-y-4">
+                    <div className="flex items-center justify-between pb-2 border-b border-gray-100">
+                      <div className="flex items-center gap-2">
+                        <span className="font-mono text-xs font-bold text-purple-700 bg-purple-50 px-2 py-0.5 rounded border border-purple-200">
+                          {df.id}
+                        </span>
+                        <span className="text-xs font-semibold text-gray-800">
+                          Variable: <span className="font-mono text-purple-600">"{src.variable}"</span>
+                        </span>
+                      </div>
+                      <span className="badge bg-danger-100 text-danger-700 text-xs font-medium">
+                        {df.confidence || 'confirmed'} exfiltration
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-11 gap-4 items-center">
+                      {/* Source */}
+                      <div className="md:col-span-5 p-4 bg-gray-50 rounded-xl border border-gray-200 space-y-2">
+                        <div className="flex items-center justify-between">
+                          <span className="text-[11px] font-bold text-gray-500 uppercase tracking-wider">Source (Data Origin)</span>
+                          <span className="text-xs font-mono text-gray-500">{src.file}:{src.line}</span>
+                        </div>
+                        <div className="font-mono text-sm font-semibold text-danger-600 bg-danger-50 px-2 py-1 rounded inline-block">
+                          {src.operation}
+                        </div>
+                        {src.value_preview && (
+                          <pre className="text-xs font-mono text-gray-700 bg-white p-2 rounded border border-gray-200 overflow-x-auto truncate">
+                            {src.value_preview}
+                          </pre>
+                        )}
+                      </div>
+
+                      {/* Transmission Vector */}
+                      <div className="md:col-span-1 flex flex-col items-center justify-center py-2 text-purple-500">
+                        <ArrowRight className="h-6 w-6 hidden md:block" />
+                        <span className="text-[10px] font-semibold text-purple-600 uppercase tracking-wider">Flows</span>
+                      </div>
+
+                      {/* Sink */}
+                      <div className="md:col-span-5 p-4 bg-gray-50 rounded-xl border border-gray-200 space-y-2">
+                        <div className="flex items-center justify-between">
+                          <span className="text-[11px] font-bold text-gray-500 uppercase tracking-wider">Sink (Exfiltration Transmission)</span>
+                          <span className="text-xs font-mono text-gray-500">{snk.file}:{snk.line}</span>
+                        </div>
+                        <div className="font-mono text-sm font-semibold text-primary-600 bg-primary-50 px-2 py-1 rounded inline-block">
+                          {snk.operation}
+                        </div>
+                        {snk.value_preview && (
+                          <pre className="text-xs font-mono text-gray-700 bg-white p-2 rounded border border-gray-200 overflow-x-auto truncate">
+                            {snk.value_preview}
+                          </pre>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
       )}
 
