@@ -138,7 +138,11 @@ fastify.get('/api/health/detailed', async () => {
 async function start() {
   try {
     await connectDatabase();
-    await redis.connect();
+    if (redis.status === 'wait') {
+      await redis.connect();
+    }
+    await redis.ping();
+    logger.info('Redis connected');
     
     scanWorker = createScanWorker(async (job: Job<ScanJobData>) => {
       await processScanJob(job.data);
@@ -161,7 +165,7 @@ async function shutdown() {
   }
   await fastify.close();
   await scanQueue.close();
-  await redis.quit();
+  await redis.quit().catch(() => {});
   await disconnectDatabase();
   process.exit(0);
 }
