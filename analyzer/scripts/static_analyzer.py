@@ -9,6 +9,38 @@ from pathlib import Path
 def get_iso_timestamp():
     return datetime.datetime.now(datetime.timezone.utc).isoformat()
 
+def load_custom_rules():
+    custom_rules = []
+    candidates = [
+        Path(__file__).resolve().parent.parent.parent / "rules",
+        Path.cwd() / "rules",
+        Path.cwd().parent / "rules"
+    ]
+    rules_dir = None
+    for c in candidates:
+        if c.exists() and c.is_dir():
+            rules_dir = c
+            break
+
+    if rules_dir:
+        for rule_file in rules_dir.glob("*.json"):
+            try:
+                with open(rule_file, "r", encoding="utf-8") as rf:
+                    data = json.load(rf)
+                    for rule in data.get("rules", []):
+                        pat = rule.get("pattern")
+                        name = rule.get("name", rule.get("id"))
+                        cat = rule.get("category", "dangerous_api").lower()
+                        sev = rule.get("severity", "medium").lower()
+                        desc = rule.get("description", "")
+                        if pat and name:
+                            custom_rules.append((pat, name, cat, sev, desc))
+            except Exception:
+                pass
+    return custom_rules
+
+CUSTOM_RULES = load_custom_rules()
+
 def analyze_file(filepath, scan_id):
     findings = []
     evidence = []
@@ -23,7 +55,7 @@ def analyze_file(filepath, scan_id):
         with open(filepath, 'r', encoding='utf-8', errors='ignore') as f:
             content = f.read()
     except Exception as e:
-        return findings, evidence, [str(e)]
+        return findings, evidence, [], [str(e)]
     
     lines = content.split('\n')
     
@@ -135,6 +167,34 @@ def analyze_file(filepath, scan_id):
                     'confidence': 'potential',
                     'created_at': get_iso_timestamp()
                 })
+
+        for pattern, name, category, severity, desc in CUSTOM_RULES:
+            if re.search(pattern, line):
+                eid = next_eid()
+                findings.append({
+                    'id': f'CF-{scan_id[:8]}-{len(findings)+1:03d}',
+                    'scan_id': scan_id,
+                    'file_path': filepath,
+                    'line': i,
+                    'column': 1,
+                    'api': name,
+                    'pattern': 'ruleset_match',
+                    'category': category,
+                    'severity': severity,
+                    'confidence': 'likely',
+                    'context': line.strip()[:200],
+                    'ast_node_type': 'Expression'
+                })
+                evidence.append({
+                    'id': eid,
+                    'scan_id': scan_id,
+                    'type': 'static_analysis',
+                    'source': 'ruleset',
+                    'description': desc or f'Matched rule: {name}',
+                    'raw_data': {'rule': name, 'pattern': pattern, 'file': filepath, 'line': i, 'category': category},
+                    'confidence': 'likely',
+                    'created_at': get_iso_timestamp()
+                })
     
     urls = re.findall(r'(?:https?://|wss?://)[^\s"\'`<>]+', content)
     for url in urls:
@@ -188,7 +248,74 @@ def analyze_file(filepath, scan_id):
                 'created_at': get_iso_timestamp()
             })
     
-    return findings, evidence, []
+    # Data Flow Analysis (Source to Sink tracking)
+    data_flows = []
+    source_patterns = [
+        (r'(?:const|let|var)\s+([a-zA-Z0-9_$]+)\s*=\s*(document\.cookie)', 'document.cookie'),
+        (r'(?:const|let|var)\s+([a-zA-Z0-9_$]+)\s*=\s*(localStorage(?:\.getItem\([^)]*\))?)', 'localStorage'),
+        (r'(?:const|let|var)\s+([a-zA-Z0-9_$]+)\s*=\s*(sessionStorage(?:\.getItem\([^)]*\))?)', 'sessionStorage'),
+        (r'(?:const|let|var)\s+([a-zA-Z0-9_$]+)\s*=\s*(chrome\.cookies\.[a-zA-Z]+)', 'chrome.cookies'),
+    ]
+
+    sink_patterns = [
+        (r'fetch\s*\(', 'fetch'),
+        (r'navigator\.sendBeacon\s*\(', 'navigator.sendBeacon'),
+        (r'\.send\s*\(', 'XMLHttpRequest.send'),
+        (r'chrome\.runtime\.sendMessage\s*\(', 'chrome.runtime.sendMessage'),
+    ]
+
+    detected_sources = {}
+    for i, line in enumerate(lines, 1):
+        for pattern, op_name in source_patterns:
+            m = re.search(pattern, line)
+            if m:
+                var_name = m.group(1)
+                detected_sources[var_name] = {
+                    'line': i,
+                    'operation': op_name,
+                    'preview': line.strip()[:200]
+                }
+
+    for i, line in enumerate(lines, 1):
+        for var_name, src in detected_sources.items():
+            if i > src['line']:
+                # Check if this line is a sink consuming the sensitive variable
+                for sink_pat, sink_name in sink_patterns:
+                    if re.search(sink_pat, line) and re.search(r'\b' + re.escape(var_name) + r'\b', line):
+                        eid = next_eid()
+                        df_id = f"DF-{scan_id[:8]}-{len(data_flows)+1:03d}"
+                        data_flows.append({
+                            'id': df_id,
+                            'scan_id': scan_id,
+                            'source': {
+                                'file': filepath,
+                                'line': src['line'],
+                                'variable': var_name,
+                                'operation': src['operation'],
+                                'value_preview': src['preview']
+                            },
+                            'transformations': [],
+                            'sink': {
+                                'file': filepath,
+                                'line': i,
+                                'variable': var_name,
+                                'operation': sink_name,
+                                'value_preview': line.strip()[:200]
+                            },
+                            'confidence': 'confirmed'
+                        })
+                        evidence.append({
+                            'id': eid,
+                            'scan_id': scan_id,
+                            'type': 'static_analysis',
+                            'source': 'data_flow',
+                            'description': f"Data exfiltration path: {src['operation']} (line {src['line']}) flows into {sink_name} (line {i}) via variable {var_name}",
+                            'raw_data': {'data_flow_id': df_id, 'source': src['operation'], 'sink': sink_name, 'variable': var_name},
+                            'confidence': 'confirmed',
+                            'created_at': get_iso_timestamp()
+                        })
+
+    return findings, evidence, data_flows, []
 
 def main():
     if len(sys.argv) < 3:
@@ -200,6 +327,7 @@ def main():
     
     all_findings = []
     all_evidence = []
+    all_data_flows = []
     all_errors = []
     
     for root, dirs, files in os.walk(extension_path):
@@ -209,21 +337,25 @@ def main():
                 filepath = os.path.join(root, file)
                 rel_path = os.path.relpath(filepath, extension_path).replace('\\', '/')
                 try:
-                    findings, evidence, errors = analyze_file(filepath, scan_id)
+                    findings, evidence, data_flows, errors = analyze_file(filepath, scan_id)
                     for f in findings:
                         f['file_path'] = rel_path
                     for e in evidence:
                         if 'raw_data' in e and isinstance(e['raw_data'], dict) and 'file' in e['raw_data']:
                             e['raw_data']['file'] = rel_path
+                    for df in data_flows:
+                        df['source']['file'] = rel_path
+                        df['sink']['file'] = rel_path
                     all_findings.extend(findings)
                     all_evidence.extend(evidence)
+                    all_data_flows.extend(data_flows)
                     all_errors.extend(errors)
                 except Exception as e:
                     all_errors.append(f"{rel_path}: {str(e)}")
     
     result = {
         'codeFindings': all_findings,
-        'dataFlows': [],
+        'dataFlows': all_data_flows,
         'evidences': all_evidence,
         'errors': all_errors
     }

@@ -30,5 +30,13 @@ describe('Static Analyzer Integration', () => {
     const urlFinding = result.codeFindings.find(f => f.api.includes('telemetry-analytics.xyz'));
     expect(urlFinding).toBeDefined();
     expect(urlFinding?.category).toBe('network_exfiltration');
+
+    // Verify source-to-sink data flow detected
+    expect(result.dataFlows.length).toBeGreaterThanOrEqual(1);
+    const cookieFlow = result.dataFlows.find(df => df.source.operation === 'document.cookie');
+    expect(cookieFlow).toBeDefined();
+    expect(cookieFlow?.sink.operation).toBe('navigator.sendBeacon');
+    expect(cookieFlow?.source.variable).toBe('stolenCookie');
+    expect(cookieFlow?.confidence).toBe('confirmed');
   });
 });
