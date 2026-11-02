@@ -1,4 +1,10 @@
 services:
+  # ─── Managed Redis / Key-Value Store ──────────────────────────────────────
+  - type: keyvalue
+    name: extensionguard-redis
+    plan: free
+    ipAllowList: []
+
   # ─── Backend Fastify Security API ─────────────────────────────────────────
   - type: web
     name: extensionguard-api
@@ -19,7 +25,7 @@ services:
           property: connectionString
       - key: REDIS_URL
         fromService:
-          type: redis
+          type: keyvalue
           name: extensionguard-redis
           property: connectionString
       - key: JWT_SECRET
@@ -51,9 +57,3 @@ services:
 databases:
   - name: extensionguard-db
     plan: free
-
-# ─── Managed Cloud Redis ───────────────────────────────────────────────────
-redis:
-  - name: extensionguard-redis
-    plan: free
-    ipAllowList: []
