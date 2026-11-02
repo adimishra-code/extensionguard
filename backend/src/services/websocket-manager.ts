@@ -20,6 +20,7 @@ export interface ServerMessage {
   type: 'risk_update' | 'alert' | 'scan_complete' | 'pong';
   extensionId?: string;
   riskScore?: number;
+  findingsCount?: number;
   severity?: 'low' | 'medium' | 'high' | 'critical';
   reasons?: string[];
   message?: string;

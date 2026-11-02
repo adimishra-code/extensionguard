@@ -189,11 +189,9 @@ export async function threatIntelRoutes(fastify: FastifyInstance) {
   });
 
   /**
-   * Submit a community report
+   * Submit a community report (supports singular and plural route)
    */
-  fastify.post('/api/threats/report', {
-    preHandler: authenticateJWT,
-  }, async (request, reply) => {
+  const handleReportSubmit = async (request: any, reply: any) => {
     try {
       const body = submitReportSchema.parse(request.body);
       const userId = request.user!.userId;
@@ -218,6 +216,42 @@ export async function threatIntelRoutes(fastify: FastifyInstance) {
       }
       throw error;
     }
+  };
+
+  fastify.post('/api/threats/report', { preHandler: authenticateJWT }, handleReportSubmit);
+  fastify.post('/api/threats/reports', { preHandler: authenticateJWT }, handleReportSubmit);
+
+  /**
+   * Get all community reports (with status filtering and pagination)
+   */
+  fastify.get('/api/threats/reports', {
+    preHandler: authenticate,
+  }, async (request, reply) => {
+    const query = request.query as any;
+    const status = query.status;
+    const limit = parseInt(query.limit || '50', 10);
+    const offset = parseInt(query.offset || '0', 10);
+
+    const where: any = {};
+    if (status && status !== 'all') {
+      where.status = status;
+    }
+
+    const [reports, total] = await Promise.all([
+      prisma.communityReport.findMany({
+        where,
+        orderBy: { reported_at: 'desc' },
+        take: limit,
+        skip: offset,
+      }),
+      prisma.communityReport.count({ where }),
+    ]);
+
+    return reply.send({
+      reports,
+      total,
+      count: reports.length,
+    });
   });
 
   /**
@@ -289,20 +323,51 @@ export async function threatIntelRoutes(fastify: FastifyInstance) {
   fastify.get('/api/threats/stats', {
     preHandler: authenticate,
   }, async (request, reply) => {
-    const [totalThreats, activeThreats, criticalThreats, pendingReports] = await Promise.all([
+    const [
+      totalThreats,
+      activeThreats,
+      verifiedThreats,
+      criticalThreats,
+      highThreats,
+      mediumThreats,
+      lowThreats,
+      totalReports,
+      pendingReports,
+    ] = await Promise.all([
       prisma.threatIntelligence.count(),
       prisma.threatIntelligence.count({ where: { active: true, false_positive: false } }),
+      prisma.threatIntelligence.count({ where: { active: true, verified_at: { not: null } } }),
       prisma.threatIntelligence.count({ where: { active: true, severity: 'critical' } }),
+      prisma.threatIntelligence.count({ where: { active: true, severity: 'high' } }),
+      prisma.threatIntelligence.count({ where: { active: true, severity: 'medium' } }),
+      prisma.threatIntelligence.count({ where: { active: true, severity: 'low' } }),
+      prisma.communityReport.count(),
       prisma.communityReport.count({ where: { status: 'pending' } }),
     ]);
 
-    return reply.send({
-      stats: {
-        totalThreats,
-        activeThreats,
-        criticalThreats,
-        pendingReports,
+    const statsPayload = {
+      totalThreats,
+      activeThreats,
+      verifiedThreats,
+      totalReports,
+      pendingReports,
+      criticalThreats,
+      bySeverity: {
+        critical: criticalThreats,
+        high: highThreats,
+        medium: mediumThreats,
+        low: lowThreats,
       },
+      byType: {
+        extension: await prisma.threatIntelligence.count({ where: { type: 'extension' } }),
+        domain: await prisma.threatIntelligence.count({ where: { type: 'domain' } }),
+        code_pattern: await prisma.threatIntelligence.count({ where: { type: 'code_pattern' } }),
+      },
+    };
+
+    return reply.send({
+      ...statsPayload,
+      stats: statsPayload,
     });
   });
 

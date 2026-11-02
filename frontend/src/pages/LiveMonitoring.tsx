@@ -50,7 +50,7 @@ export function LiveMonitoring() {
       } else if (window.location.port === '5173') {
         host = `${window.location.hostname}:3001`;
       }
-      const token = localStorage.getItem('token') || localStorage.getItem('auth_token');
+      const token = localStorage.getItem('eg_auth_token') || localStorage.getItem('token') || localStorage.getItem('auth_token');
       return `${protocol}//${host}/ws${token ? `?token=${encodeURIComponent(token)}` : ''}`;
     }
 

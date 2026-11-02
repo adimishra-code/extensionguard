@@ -45,17 +45,27 @@ export async function alertRoutes(fastify: FastifyInstance) {
   });
 
   /**
-   * Mark alert as read
+   * Get unread alert count
    */
-  fastify.post('/api/alerts/:alertId/read', {
+  fastify.get('/api/alerts/unread-count', {
     preHandler: authenticateJWT,
   }, async (request, reply) => {
-    const { alertId } = request.params as { alertId: string };
-
-    await alertManager.markAlertRead(alertId);
-
-    return reply.send({ success: true });
+    const userId = request.user!.userId;
+    const stats = await alertManager.getAlertStats(userId);
+    return reply.send({ count: stats.unread });
   });
+
+  /**
+   * Mark alert as read (supports POST and PATCH)
+   */
+  const handleMarkRead = async (request: any, reply: any) => {
+    const { alertId } = request.params as { alertId: string };
+    await alertManager.markAlertRead(alertId);
+    return reply.send({ success: true });
+  };
+
+  fastify.post('/api/alerts/:alertId/read', { preHandler: authenticateJWT }, handleMarkRead);
+  fastify.patch('/api/alerts/:alertId/read', { preHandler: authenticateJWT }, handleMarkRead);
 
   /**
    * Mark all alerts as read

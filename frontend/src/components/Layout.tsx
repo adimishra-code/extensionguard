@@ -1,9 +1,9 @@
 import { Outlet, NavLink, useLocation } from 'react-router-dom';
-import { Shield, Search, List, Settings, Menu, X, Package, Activity, ShieldAlert, GitCompare, Bell, Check } from 'lucide-react';
+import { Shield, Search, List, Settings, Menu, X, Package, Activity, ShieldAlert, GitCompare, Bell, Check, User, LogIn, LogOut, Key } from 'lucide-react';
 import { useState } from 'react';
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { healthApi, alertsApi } from '../lib/api';
+import { healthApi, alertsApi, authApi, setAuthToken, clearAuthToken, hasAuthToken } from '../lib/api';
 import { cn, formatRelativeTime, getSeverityBadge } from '../lib/utils';
 import type { AlertItem } from '@extension-guard/shared';
 
@@ -22,7 +22,21 @@ export function Layout() {
   const queryClient = useQueryClient();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [alertsOpen, setAlertsOpen] = useState(false);
+  const [authModalOpen, setAuthModalOpen] = useState(false);
+  const [authMode, setAuthMode] = useState<'login' | 'register'>('login');
+  const [emailInput, setEmailInput] = useState('security@extensionguard.io');
+  const [passwordInput, setPasswordInput] = useState('admin12345');
+  const [authError, setAuthError] = useState<string | null>(null);
   const location = useLocation();
+
+  const isAuthed = hasAuthToken();
+
+  const { data: userProfile } = useQuery({
+    queryKey: ['auth-profile', isAuthed],
+    queryFn: () => authApi.profile().then(r => r.data.user).catch(() => null),
+    enabled: isAuthed,
+    retry: false,
+  });
 
   const { data: health } = useQuery({
     queryKey: ['health-status'],
@@ -44,6 +58,34 @@ export function Layout() {
       queryClient.invalidateQueries({ queryKey: ['alerts'] });
     },
   });
+
+  const loginMutation = useMutation({
+    mutationFn: async ({ email, pass }: { email: string; pass: string }) => {
+      if (authMode === 'login') {
+        return (await authApi.login(email, pass)).data;
+      } else {
+        return (await authApi.register(email, pass)).data;
+      }
+    },
+    onSuccess: (data) => {
+      setAuthToken(data.token);
+      setAuthError(null);
+      setAuthModalOpen(false);
+      queryClient.invalidateQueries();
+    },
+    onError: (err: any) => {
+      setAuthError(err.response?.data?.error || 'Authentication failed. Please verify credentials.');
+    },
+  });
+
+  const handleQuickDemoLogin = () => {
+    loginMutation.mutate({ email: 'security@extensionguard.io', pass: 'admin12345' });
+  };
+
+  const handleLogout = () => {
+    clearAuthToken();
+    queryClient.invalidateQueries();
+  };
 
   const alerts = alertsData || [];
   const unreadAlerts = alerts.filter((a) => !a.read);
@@ -221,10 +263,137 @@ export function Layout() {
                   </div>
                 </>
               )}
+              {/* Authentication Status / Profile Button */}
+              {isAuthed && userProfile ? (
+                <div className="flex items-center gap-2">
+                  <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-lg bg-gray-100 text-xs text-gray-700">
+                    <User className="h-3.5 w-3.5 text-primary-600" />
+                    <span className="font-medium truncate max-w-[150px]">{userProfile.email}</span>
+                  </div>
+                  <button
+                    onClick={handleLogout}
+                    title="Sign Out"
+                    className="p-2 rounded-lg text-gray-500 hover:text-danger-600 hover:bg-gray-100 transition-colors"
+                  >
+                    <LogOut className="h-4 w-4" />
+                  </button>
+                </div>
+              ) : (
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => setAuthModalOpen(true)}
+                    className="btn-primary text-xs py-1.5 px-3 flex items-center gap-1.5"
+                  >
+                    <LogIn className="h-3.5 w-3.5" /> Sign In / Demo
+                  </button>
+                </div>
+              )}
             </div>
 
           </div>
         </header>
+
+        {/* Authentication Modal */}
+        {authModalOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50">
+            <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 space-y-4 relative">
+              <button
+                onClick={() => setAuthModalOpen(false)}
+                className="absolute top-4 right-4 text-gray-400 hover:text-gray-600"
+              >
+                <X className="h-5 w-5" />
+              </button>
+
+              <div className="text-center space-y-1">
+                <div className="h-12 w-12 rounded-2xl bg-primary-100 text-primary-600 flex items-center justify-center mx-auto mb-2">
+                  <Key className="h-6 w-6" />
+                </div>
+                <h3 className="text-xl font-bold text-gray-900">
+                  {authMode === 'login' ? 'Sign In to ExtensionGuard' : 'Create an Account'}
+                </h3>
+                <p className="text-xs text-gray-500">
+                  Access live threat intelligence, differential analysis & alert triage
+                </p>
+              </div>
+
+              {/* Quick Demo Login Banner */}
+              <div className="p-3 bg-primary-50 rounded-xl border border-primary-200 text-center space-y-2">
+                <p className="text-xs text-primary-800 font-medium">Testing locally or in evaluation mode?</p>
+                <button
+                  type="button"
+                  onClick={handleQuickDemoLogin}
+                  disabled={loginMutation.isPending}
+                  className="w-full py-2 px-3 rounded-lg bg-primary-600 hover:bg-primary-700 text-white font-medium text-xs transition-colors shadow-sm"
+                >
+                  {loginMutation.isPending ? 'Authenticating...' : '⚡ Quick Login as Demo Analyst'}
+                </button>
+              </div>
+
+              <div className="relative flex py-1 items-center">
+                <div className="flex-grow border-t border-gray-200"></div>
+                <span className="flex-shrink mx-3 text-xs text-gray-400 uppercase">Or with credentials</span>
+                <div className="flex-grow border-t border-gray-200"></div>
+              </div>
+
+              {authError && (
+                <div className="p-2.5 rounded-lg bg-danger-50 text-danger-800 text-xs border border-danger-200">
+                  {authError}
+                </div>
+              )}
+
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  loginMutation.mutate({ email: emailInput, pass: passwordInput });
+                }}
+                className="space-y-3"
+              >
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">Email Address</label>
+                  <input
+                    type="email"
+                    value={emailInput}
+                    onChange={(e) => setEmailInput(e.target.value)}
+                    required
+                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">Password</label>
+                  <input
+                    type="password"
+                    value={passwordInput}
+                    onChange={(e) => setPasswordInput(e.target.value)}
+                    required
+                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
+                  />
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={loginMutation.isPending}
+                  className="w-full btn-secondary text-sm py-2 font-medium"
+                >
+                  {loginMutation.isPending ? 'Processing...' : authMode === 'login' ? 'Sign In' : 'Register'}
+                </button>
+              </form>
+
+              <div className="text-center pt-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setAuthMode(authMode === 'login' ? 'register' : 'login');
+                    setAuthError(null);
+                  }}
+                  className="text-xs text-primary-600 hover:underline"
+                >
+                  {authMode === 'login' ? "Don't have an account? Register here" : 'Already have an account? Sign In'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
         <main className="p-4 sm:p-6 lg:p-8">
           <Outlet />

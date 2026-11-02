@@ -133,7 +133,12 @@ export const threatIntelApi = {
     ),
 
   listThreats: (params?: { type?: string; severity?: string; limit?: number }) =>
-    api.get<ThreatIntelligenceItem[]>('/threats', { params }),
+    api.get<{ threats: ThreatIntelligenceItem[]; count: number } | ThreatIntelligenceItem[]>('/threats', { params })
+      .then((res) => {
+        const raw = res.data;
+        const threats = Array.isArray(raw) ? raw : (raw as any)?.threats || [];
+        return { ...res, data: threats as ThreatIntelligenceItem[] };
+      }),
 
   verifyThreat: (id: string) =>
     api.post(`/threats/${id}/verify`),
@@ -152,20 +157,29 @@ export const threatIntelApi = {
 
   getStats: () =>
     api.get<{
+      stats?: any;
       totalThreats: number;
       totalReports: number;
       verifiedThreats: number;
       bySeverity: Record<string, number>;
       byType: Record<string, number>;
-    }>('/threats/stats'),
+    }>('/threats/stats').then((res) => {
+      const stats = res.data?.stats || res.data;
+      return { ...res, data: stats };
+    }),
 };
 
 export const alertsApi = {
   list: (params?: { unreadOnly?: boolean; limit?: number; offset?: number }) =>
-    api.get<AlertItem[]>('/alerts', { params }),
+    api.get<{ alerts: AlertItem[]; count: number } | AlertItem[]>('/alerts', { params })
+      .then((res) => {
+        const raw = res.data;
+        const alerts = Array.isArray(raw) ? raw : (raw as any)?.alerts || [];
+        return { ...res, data: alerts as AlertItem[] };
+      }),
 
   markAsRead: (id: string) =>
-    api.patch<AlertItem>(`/alerts/${id}/read`),
+    api.post<{ success: boolean }>(`/alerts/${id}/read`),
 
   delete: (id: string) =>
     api.delete<{ success: boolean }>(`/alerts/${id}`),

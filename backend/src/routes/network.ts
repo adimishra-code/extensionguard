@@ -2,6 +2,7 @@ import { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { authenticate } from '../utils/auth-middleware';
 import { networkMonitor } from '../services/network-monitor';
+import { prisma } from '../utils/prisma';
 import { logger } from '../utils/logger';
 
 const logNetworkSchema = z.object({
@@ -42,6 +43,79 @@ export async function networkRoutes(fastify: FastifyInstance) {
       }
       throw error;
     }
+  });
+
+  /**
+   * Get all network logs (supports query filters for extensionId and blocked)
+   */
+  fastify.get('/api/network/logs', {
+    preHandler: authenticate,
+  }, async (request, reply) => {
+    const query = request.query as any;
+    const limit = parseInt(query.limit || '100', 10);
+    const offset = parseInt(query.offset || '0', 10);
+    const where: any = {};
+    if (query.extensionId) where.extension_id = query.extensionId;
+    if (query.blocked !== undefined) where.blocked = query.blocked === 'true';
+
+    const [logs, total] = await Promise.all([
+      prisma.networkLog.findMany({
+        where,
+        orderBy: { timestamp: 'desc' },
+        take: limit,
+        skip: offset,
+      }),
+      prisma.networkLog.count({ where }),
+    ]);
+
+    return reply.send({
+      logs,
+      total,
+      count: logs.length,
+    });
+  });
+
+  /**
+   * Get overall network stats or stats for an extension
+   */
+  fastify.get('/api/network/stats', {
+    preHandler: authenticate,
+  }, async (request, reply) => {
+    const query = request.query as any;
+    const extensionId = query.extensionId as string | undefined;
+
+    if (extensionId) {
+      const stats = await networkMonitor.getExtensionNetworkStats(extensionId);
+      return reply.send(stats);
+    }
+
+    const [totalRequests, blockedRequests, suspiciousCount] = await Promise.all([
+      prisma.networkLog.count(),
+      prisma.networkLog.count({ where: { blocked: true } }),
+      prisma.networkLog.count({ where: { blocked: true } }),
+    ]);
+
+    const topDomainsRaw = await prisma.networkLog.groupBy({
+      by: ['url'],
+      _count: { url: true },
+      take: 10,
+      orderBy: { _count: { url: 'desc' } },
+    });
+
+    const topDomains = topDomainsRaw.map((item: { url: string; _count: { url: number } }) => {
+      let domain = item.url;
+      try {
+        domain = new URL(item.url).hostname;
+      } catch {}
+      return { domain, count: item._count.url };
+    });
+
+    return reply.send({
+      totalRequests,
+      blockedRequests,
+      suspiciousCount,
+      topDomains,
+    });
   });
 
   /**
