@@ -39,6 +39,8 @@ FROM node:20-slim AS production
 ENV NODE_ENV=production
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
+    python3 \
+    python3-pip \
     openssl \
     curl \
     ca-certificates \
@@ -55,6 +57,9 @@ COPY frontend/package.json ./frontend/
 # Install production dependencies only
 RUN npm ci --omit=dev
 
+# Install Playwright browser dependencies and chromium
+RUN npx playwright install --with-deps chromium || true
+
 # Copy built artifacts from builder
 COPY --from=builder /app/shared/dist ./shared/dist
 COPY --from=builder /app/backend/dist ./backend/dist
@@ -62,8 +67,9 @@ COPY --from=builder /app/backend/prisma ./backend/prisma
 COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
 COPY --from=builder /app/node_modules/@prisma/client ./node_modules/@prisma/client
 
-# Copy analyzer scripts
+# Copy analyzer scripts and rules
 COPY analyzer ./analyzer
+COPY rules ./rules
 
 EXPOSE 3001
 

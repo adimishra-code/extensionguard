@@ -16,6 +16,11 @@ const envSchema = z.object({
   FRONTEND_URL: z.string().url().default('http://localhost:5173'),
   ANALYZER_VERSION: z.string().default('1.0.0'),
   RULESET_VERSION: z.string().default('1.0.0'),
+  GEMINI_API_KEY: z.string().optional(),
+  OPENAI_API_KEY: z.string().optional(),
+  ANTHROPIC_API_KEY: z.string().optional(),
+  LLM_PROVIDER: z.enum(['gemini', 'openai', 'anthropic', 'heuristic']).default('heuristic'),
+  LLM_MODEL: z.string().default('gemini-1.5-flash'),
 });
 
 // Validate early — fail fast on startup if env is misconfigured

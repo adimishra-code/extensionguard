@@ -49,7 +49,7 @@ services:
       DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD:-postgrespassword}@postgres:5432/extension_guard?schema=public
       REDIS_URL: redis://redis:6379
       FRONTEND_URL: ${FRONTEND_URL:-http://localhost:5173}
-      JWT_SECRET: ${JWT_SECRET}
+      JWT_SECRET: ${JWT_SECRET:-production-secret-token-key-extension-guard-99}
       JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-7d}
       UPLOAD_DIR: /tmp/extension-guard/uploads
       UPLOAD_MAX_SIZE: 52428800
