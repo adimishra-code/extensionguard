@@ -13,6 +13,9 @@ export class NetworkInterceptor {
   private apiKey: string | undefined;
   private enabled: boolean = false;
 
+  private handleRequestBound = (details: chrome.webRequest.WebRequestBodyDetails) => this.handleRequest(details);
+  private handleCompletedBound = (details: chrome.webRequest.WebResponseHeadersDetails) => this.handleCompleted(details);
+
   constructor(apiUrl: string, apiKey?: string) {
     this.apiUrl = apiUrl;
     this.apiKey = apiKey;
@@ -28,13 +31,18 @@ export class NetworkInterceptor {
     }
 
     try {
-      // Request webRequest permission
-      const granted = await chrome.permissions.request({
-        permissions: ['webRequest'],
-      });
+      // Check if permission is already granted without throwing on background context
+      let granted = false;
+      try {
+        granted = await chrome.permissions.contains({
+          permissions: ['webRequest'],
+        });
+      } catch {
+        granted = false;
+      }
 
       if (!granted) {
-        console.warn('[Network Interceptor] Permission denied');
+        console.log('[Network Interceptor] webRequest permission not granted yet');
         return;
       }
 
@@ -42,14 +50,14 @@ export class NetworkInterceptor {
 
       // Listen for requests
       chrome.webRequest.onBeforeRequest.addListener(
-        (details) => this.handleRequest(details),
+        this.handleRequestBound,
         { urls: ['<all_urls>'] },
         ['requestBody']
       );
 
       // Listen for completed requests
       chrome.webRequest.onCompleted.addListener(
-        (details) => this.handleCompleted(details),
+        this.handleCompletedBound,
         { urls: ['<all_urls>'] },
         ['responseHeaders']
       );
@@ -69,8 +77,12 @@ export class NetworkInterceptor {
     }
 
     // Remove listeners
-    chrome.webRequest.onBeforeRequest.removeListener(this.handleRequest);
-    chrome.webRequest.onCompleted.removeListener(this.handleCompleted);
+    try {
+      chrome.webRequest.onBeforeRequest.removeListener(this.handleRequestBound);
+      chrome.webRequest.onCompleted.removeListener(this.handleCompletedBound);
+    } catch (error) {
+      console.error('[Network Interceptor] Failed to remove listeners:', error);
+    }
 
     this.enabled = false;
     console.log('[Network Interceptor] Disabled');
@@ -132,13 +144,19 @@ export class NetworkInterceptor {
       return;
     }
 
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+    };
+
+    if (this.apiKey.startsWith('ey') || this.apiKey.includes('.')) {
+      headers['Authorization'] = `Bearer ${this.apiKey}`;
+    }
+    headers['X-API-Key'] = this.apiKey;
+
     // Send to backend
     fetch(`${this.apiUrl}/api/network/log`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-API-Key': this.apiKey,
-      },
+      headers,
       body: JSON.stringify(request),
     }).catch((error) => {
       console.error('[Network Interceptor] Failed to log request:', error);
@@ -153,7 +171,14 @@ export class NetworkInterceptor {
     url: string,
     statusCode: number
   ): void {
-    // Could be used for more sophisticated tracking
     console.log(`[Network Interceptor] ${extensionId} -> ${url} (${statusCode})`);
+    if (this.apiKey) {
+      this.logRequest({
+        extensionId,
+        url,
+        method: 'GET',
+        statusCode,
+      });
+    }
   }
 }

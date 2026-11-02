@@ -1,6 +1,7 @@
 import { logger } from '../utils/logger';
 import { prisma } from '../utils/prisma';
 import { wsManager, MonitoringEvent, ServerMessage } from './websocket-manager';
+import { cwsScraper } from './cws-scraper';
 
 export class MonitorProcessor {
   /**
@@ -267,21 +268,53 @@ export class MonitorProcessor {
   }
 
   /**
-   * Check if extension needs scanning and queue if needed
+   * Check if extension needs scanning and scrape/queue if needed
    */
-  private async checkAndQueueScan(
+  public async checkAndQueueScan(
     userId: string,
     clientId: string,
     extensionId: string,
     version?: string
   ): Promise<void> {
-    // For now, just log - will integrate with scan queue later
-    logger.debug({ userId, clientId, extensionId, version }, 'Would queue scan for extension');
+    logger.debug({ userId, clientId, extensionId, version }, 'Checking scan status for extension');
 
-    // TODO: Integrate with existing scan queue
-    // - Check if we have this extension version scanned
-    // - If not, queue a scan job
-    // - When scan completes, send risk_update message
+    try {
+      // Trigger CWS metadata scrape to ensure we have the latest version & manifest
+      const cwsInfo = await cwsScraper.scrapeExtension(extensionId);
+
+      // Check if we have an existing scan record
+      const existingScan = await prisma.scan.findFirst({
+        where: {
+          extension: {
+            OR: [
+              { id: extensionId },
+              { name: cwsInfo?.name || extensionId },
+            ],
+          },
+          status: 'completed',
+        },
+        include: { risk_scores: true },
+        orderBy: { completed_at: 'desc' },
+      });
+
+      if (existingScan?.risk_scores) {
+        // Send risk update to client
+        const message: ServerMessage = {
+          type: 'risk_update',
+          extensionId,
+          riskScore: existingScan.risk_scores.overall_score,
+          findingsCount: existingScan.risk_scores.breakdown_json ? (existingScan.risk_scores.breakdown_json as any).length : 0,
+          timestamp: Date.now(),
+        };
+        if (clientId && clientId !== 'monitor-api') {
+          wsManager.sendToClient(clientId, message);
+        } else {
+          wsManager.sendToUser(userId, message);
+        }
+      }
+    } catch (err) {
+      logger.warn({ err, extensionId }, 'Failed in checkAndQueueScan');
+    }
   }
 }
 

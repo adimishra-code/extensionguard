@@ -1,10 +1,13 @@
 import type { MonitoringEvent, ServerMessage, Extension } from '@/types';
 import { WebSocketManager } from './websocket';
 import { StorageManager } from './storage';
+import { riskAnalyzer } from './risk-analyzer';
+import { NetworkInterceptor } from './network-interceptor';
 
 class BackgroundService {
   private ws: WebSocketManager;
   private storage: StorageManager;
+  private networkInterceptor?: NetworkInterceptor;
   private clientId: string;
 
   constructor() {
@@ -31,6 +34,12 @@ class BackgroundService {
     // Connect to backend
     if (config.syncEnabled) {
       await this.ws.connect(config);
+    }
+
+    // Initialize network interception if API configured
+    if (config.apiUrl) {
+      this.networkInterceptor = new NetworkInterceptor(config.apiUrl, config.apiKey);
+      await this.networkInterceptor.enable();
     }
 
     console.log('[Extension Guard] Background service initialized');
@@ -138,6 +147,13 @@ class BackgroundService {
 
       case 'update-config':
         await this.storage.saveConfig(message.config);
+        if (this.networkInterceptor) {
+          this.networkInterceptor.disable();
+        }
+        if (message.config.apiUrl) {
+          this.networkInterceptor = new NetworkInterceptor(message.config.apiUrl, message.config.apiKey);
+          await this.networkInterceptor.enable();
+        }
         if (message.config.syncEnabled) {
           await this.ws.connect(message.config);
         } else {
@@ -222,6 +238,21 @@ class BackgroundService {
 
     const extensions = await this.getAllExtensions();
 
+    // Compute baseline local heuristic risk score for any extension lacking one
+    const existingScores = await this.storage.getAllRiskScores();
+    for (const ext of extensions) {
+      if (!existingScores[ext.id]) {
+        const analysis = riskAnalyzer.analyzeExtension(ext);
+        await this.storage.saveRiskScore({
+          extensionId: ext.id,
+          score: analysis.score,
+          severity: analysis.severity,
+          reasons: analysis.factors.map(f => f.description),
+          lastUpdated: Date.now(),
+        });
+      }
+    }
+
     const event: MonitoringEvent = {
       type: 'register',
       clientId: this.clientId,
@@ -304,6 +335,16 @@ class BackgroundService {
       this.ws.send(event);
     }
 
+    // Compute local baseline risk score immediately
+    const analysis = riskAnalyzer.analyzeExtension(extension);
+    await this.storage.saveRiskScore({
+      extensionId: extension.id,
+      score: analysis.score,
+      severity: analysis.severity,
+      reasons: analysis.factors.map(f => f.description),
+      lastUpdated: Date.now(),
+    });
+
     // Save current version
     await this.storage.saveExtensionVersion(extension.id, extension.version);
   }
@@ -317,13 +358,18 @@ class BackgroundService {
       return;
     }
 
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+    };
+    if (config.apiKey.startsWith('ey') || config.apiKey.includes('.')) {
+      headers['Authorization'] = `Bearer ${config.apiKey}`;
+    }
+    headers['X-API-Key'] = config.apiKey;
+
     // API call to trigger scan
     const response = await fetch(`${config.apiUrl}/api/monitor/scan`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${config.apiKey}`,
-      },
+      headers,
       body: JSON.stringify({ extensionId }),
     });
 

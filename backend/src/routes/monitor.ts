@@ -3,6 +3,8 @@ import { z } from 'zod';
 import { prisma } from '../utils/prisma';
 import { authenticate } from '../utils/auth-middleware';
 import { wsManager, ServerMessage } from '../services/websocket-manager';
+import { monitorProcessor } from '../services/monitor-processor';
+import { logger } from '../utils/logger';
 
 const scanRequestSchema = z.object({
   extensionId: z.string(),
@@ -23,6 +25,11 @@ export async function monitorRoutes(fastify: FastifyInstance) {
       // For now, just acknowledge the request
 
       logger.info({ userId, extensionId: body.extensionId }, 'Scan requested via monitor API');
+
+      // Trigger background scrape and scan check
+      monitorProcessor.checkAndQueueScan(userId, 'monitor-api', body.extensionId).catch((err) => {
+        logger.error({ err, extensionId: body.extensionId }, 'Failed to queue scan from monitor API');
+      });
 
       return reply.send({
         message: 'Scan request received',
@@ -192,6 +199,3 @@ export async function monitorRoutes(fastify: FastifyInstance) {
     }
   });
 }
-
-// Import logger
-import { logger } from '../utils/logger';
