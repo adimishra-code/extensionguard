@@ -10,8 +10,8 @@ services:
     name: extensionguard-api
     env: node
     plan: free
-    buildCommand: npm ci && npm run build --workspace=shared && npm run build --workspace=backend && npm run db:deploy
-    startCommand: npm run start
+    buildCommand: npm ci && npm run db:generate --workspace=backend && npm run build --workspace=shared && npm run build --workspace=backend
+    startCommand: npm run db:deploy && npm run start
     envVars:
       - key: NODE_ENV
         value: production
@@ -41,7 +41,7 @@ services:
   - type: web
     name: extensionguard-web
     env: static
-    buildCommand: npm ci && npm run build --workspace=frontend
+    buildCommand: npm ci && npm run build --workspace=shared && npm run build --workspace=frontend
     staticPublishPath: frontend/dist
     routes:
       - type: rewrite
