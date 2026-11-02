@@ -1,0 +1,42 @@
+name: CI Quality Gate
+
+on:
+  push:
+    branches: [master, main]
+  pull_request:
+    branches: [master, main]
+
+jobs:
+  validate:
+    name: Lint, Test & Build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Setup Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install Dependencies
+        run: npm ci
+
+      - name: Code Quality & Linting
+        run: npm run lint --workspaces
+
+      - name: Run Test Suites
+        run: npm run test --workspaces
+
+      - name: Build Monorepo Workspaces
+        run: npm run build --workspaces
+
+      - name: Verify CLI Security Scanner
+        run: npm run scan -- tests/fixtures/sample-extension --json
