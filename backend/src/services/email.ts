@@ -51,6 +51,16 @@ class EmailService {
     }
   }
 
+  private getFromAddress(): string {
+    if (config.SMTP_FROM && !config.SMTP_FROM.includes('no-reply@extensionguard.io')) {
+      return config.SMTP_FROM;
+    }
+    if (config.SMTP_USER) {
+      return `ExtensionGuard <${config.SMTP_USER}>`;
+    }
+    return config.SMTP_FROM || 'ExtensionGuard <no-reply@extensionguard.io>';
+  }
+
   /**
    * Send an account verification email containing an OTP code and verification link
    */
@@ -112,7 +122,7 @@ class EmailService {
     if (this.isConfigured && this.transporter) {
       try {
         await this.transporter.sendMail({
-          from: config.SMTP_FROM,
+          from: this.getFromAddress(),
           to: email,
           subject,
           text,
@@ -181,7 +191,7 @@ class EmailService {
     if (this.isConfigured && this.transporter) {
       try {
         await this.transporter.sendMail({
-          from: config.SMTP_FROM,
+          from: this.getFromAddress(),
           to: email,
           subject,
           text,
