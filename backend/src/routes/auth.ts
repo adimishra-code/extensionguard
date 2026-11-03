@@ -127,7 +127,9 @@ export async function authRoutes(fastify: FastifyInstance) {
   /**
    * Verify email using 6-digit OTP code or link token
    */
-  fastify.post('/api/auth/verify-email', async (request, reply) => {
+  fastify.post('/api/auth/verify-email', {
+    config: { rateLimit: { max: 10, timeWindow: '1 minute' } },
+  }, async (request, reply) => {
     try {
       const body = verifyEmailSchema.parse(request.body);
 
@@ -301,7 +303,9 @@ export async function authRoutes(fastify: FastifyInstance) {
   /**
    * Reset password with reset token
    */
-  fastify.post('/api/auth/reset-password', async (request, reply) => {
+  fastify.post('/api/auth/reset-password', {
+    config: { rateLimit: { max: 5, timeWindow: '1 minute' } },
+  }, async (request, reply) => {
     try {
       const body = resetPasswordSchema.parse(request.body);
 
@@ -339,7 +343,9 @@ export async function authRoutes(fastify: FastifyInstance) {
   /**
    * Login user
    */
-  fastify.post('/api/auth/login', async (request, reply) => {
+  fastify.post('/api/auth/login', {
+    config: { rateLimit: { max: 10, timeWindow: '1 minute' } },
+  }, async (request, reply) => {
     try {
       const body = loginSchema.parse(request.body);
       const email = body.email.toLowerCase().trim();

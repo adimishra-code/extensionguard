@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { Navigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { adminApi, authApi } from '../lib/api';
 import {
@@ -108,17 +109,7 @@ export function AdminPanel() {
   }
 
   if (!isAdmin) {
-    return (
-      <div className="max-w-xl mx-auto mt-16 card p-8 text-center space-y-4">
-        <div className="w-16 h-16 mx-auto rounded-full bg-red-100 flex items-center justify-center text-red-600">
-          <AlertTriangle className="h-8 w-8" />
-        </div>
-        <h2 className="text-2xl font-bold text-gray-900">Access Restricted</h2>
-        <p className="text-gray-600 text-sm">
-          You need administrator privileges to access the ExtensionGuard Control Panel. Please log in with an administrator account.
-        </p>
-      </div>
-    );
+    return <Navigate to="/dashboard" replace />;
   }
 
   return (
