@@ -28,8 +28,8 @@ export function Layout() {
   const [alertsOpen, setAlertsOpen] = useState(false);
   const [authModalOpen, setAuthModalOpen] = useState(false);
   const [authMode, setAuthMode] = useState<'login' | 'register' | 'verify' | 'forgot'>('login');
-  const [emailInput, setEmailInput] = useState('security@extensionguard.io');
-  const [passwordInput, setPasswordInput] = useState('admin12345');
+  const [emailInput, setEmailInput] = useState('');
+  const [passwordInput, setPasswordInput] = useState('');
   const [otpInput, setOtpInput] = useState('');
   const [authError, setAuthError] = useState<string | null>(null);
   const [authSuccessMessage, setAuthSuccessMessage] = useState<string | null>(null);
@@ -347,6 +347,9 @@ export function Layout() {
                   <button
                     onClick={() => {
                       setAuthMode('login');
+                      setEmailInput('');
+                      setPasswordInput('');
+                      setOtpInput('');
                       setAuthError(null);
                       setAuthSuccessMessage(null);
                       setAuthModalOpen(true);

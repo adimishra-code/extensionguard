@@ -349,21 +349,6 @@ export async function authRoutes(fastify: FastifyInstance) {
         where: { email },
       });
 
-      // Quick Demo convenience: if default demo admin does not exist, initialize it
-      if (!user && email === 'security@extensionguard.io' && body.password === 'admin12345') {
-        const passwordHash = await AuthService.hashPassword(body.password);
-        const apiKey = AuthService.generateApiKey();
-        user = await prisma.user.create({
-          data: {
-            email,
-            password_hash: passwordHash,
-            api_key: apiKey,
-            role: 'admin',
-            is_verified: true,
-          },
-        });
-      }
-
       if (!user) {
         return reply.code(401).send({ error: 'Invalid credentials' });
       }
