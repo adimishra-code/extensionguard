@@ -7,7 +7,7 @@ import { Job } from 'bullmq';
 import { config } from './config';
 import { logger } from './utils/logger';
 import { connectDatabase, disconnectDatabase, prisma } from './utils/prisma';
-import { redis, scanQueue, createScanWorker, ScanJobData } from './queue';
+import { redis, scanQueue, createScanWorker, registerInProcessExecutor, ScanJobData } from './queue';
 import { processScanJob } from './services/scan-orchestrator';
 import { scanRoutes } from './routes/scan';
 import { authRoutes } from './routes/auth';
@@ -138,20 +138,30 @@ fastify.get('/api/health/detailed', async () => {
 async function start() {
   try {
     await connectDatabase();
-    if (redis.status === 'wait') {
-      await redis.connect();
-    }
-    await redis.ping();
-    logger.info('Redis connected');
-    
-    scanWorker = createScanWorker(async (job: Job<ScanJobData>) => {
-      await processScanJob(job.data);
-    });
-    
+    registerInProcessExecutor(processScanJob);
+
     await fastify.listen({ port: config.PORT, host: config.HOST });
-    
     logger.info(`Server listening on ${config.HOST}:${config.PORT}`);
     logger.info(`Health check: http://${config.HOST}:${config.PORT}/health`);
+
+    try {
+      if (redis.status === 'wait') {
+        await Promise.race([
+          redis.connect(),
+          new Promise((_, reject) => setTimeout(() => reject(new Error('Redis connect timeout')), 4000)),
+        ]);
+      }
+      await Promise.race([
+        redis.ping(),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('Redis ping timeout')), 4000)),
+      ]);
+      logger.info('Redis connected — background worker queue active');
+      scanWorker = createScanWorker(async (job: Job<ScanJobData>) => {
+        await processScanJob(job.data);
+      });
+    } catch (redisErr) {
+      logger.warn({ err: (redisErr as Error)?.message || redisErr }, 'Redis unavailable — running in direct in-process scan mode');
+    }
   } catch (err) {
     logger.fatal({ err }, 'Failed to start server');
     process.exit(1);
