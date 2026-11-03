@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite build --watch --mode development",
     "build": "tsc && vite build",
+    "package": "npm run build && tsx ../scripts/package_extension.ts",
     "preview": "vite preview",
     "lint": "eslint . --ext ts,tsx",
     "type-check": "tsc --noEmit"

@@ -10,6 +10,7 @@ import { ThreatIntelligence } from './pages/ThreatIntelligence';
 import { DifferentialView } from './pages/DifferentialView';
 import { Settings } from './pages/Settings';
 import { AdminPanel } from './pages/AdminPanel';
+import { PrivacyPolicy } from './pages/PrivacyPolicy';
 
 export function App() {
   return (
@@ -27,6 +28,7 @@ export function App() {
         <Route path="differential" element={<DifferentialView />} />
         <Route path="settings" element={<Settings />} />
         <Route path="admin" element={<AdminPanel />} />
+        <Route path="privacy" element={<PrivacyPolicy />} />
       </Route>
 
 

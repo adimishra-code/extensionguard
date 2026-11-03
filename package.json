@@ -19,6 +19,7 @@
     "db:deploy": "npm run db:deploy --workspace=backend",
     "db:seed": "npm run db:seed --workspace=backend",
     "start": "npm run start --workspace=backend",
+    "package:extension": "tsx scripts/package_extension.ts",
     "scan": "tsx scripts/scan_cli.ts",
     "scan:deep": "tsx scripts/scan_cli.ts --deep"
   },

@@ -193,7 +193,7 @@ export function Layout() {
             );
           })}
         </nav>
-        <div className="p-4 border-t border-gray-200">
+        <div className="p-4 border-t border-gray-200 space-y-2">
           <div className="flex items-center justify-between">
             <p className="text-xs text-gray-500">v1.0.1</p>
             <div className="flex items-center gap-1.5">
@@ -209,6 +209,13 @@ export function Layout() {
                 {health === undefined ? 'checking...' : isHealthy ? 'online' : 'degraded'}
               </span>
             </div>
+          </div>
+          <div className="text-[11px] text-gray-400 flex items-center justify-between">
+            <NavLink to="/privacy" className="hover:text-primary-600 transition-colors">
+              Privacy Policy
+            </NavLink>
+            <span>•</span>
+            <span className="text-gray-300">CWS Compliant</span>
           </div>
         </div>
       </aside>

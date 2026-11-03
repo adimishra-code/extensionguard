@@ -1,5 +1,5 @@
 export const DEFAULT_CONFIG = {
-  apiUrl: import.meta.env.DEV ? 'http://localhost:3001' : 'https://api.extensionguard.dev',
+  apiUrl: import.meta.env.DEV ? 'http://localhost:3001' : 'https://extensionguard-api.onrender.com',
   syncEnabled: true,
   alertLevel: 'high' as const,
   scanFrequency: 60, // Check every hour
