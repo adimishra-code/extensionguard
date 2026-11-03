@@ -17,6 +17,7 @@ import { threatIntelRoutes } from './routes/threat-intel';
 import { cwsRoutes } from './routes/cws';
 import { networkRoutes } from './routes/network';
 import { alertRoutes } from './routes/alerts';
+import { adminRoutes } from './routes/admin';
 import { websocketPlugin } from './plugins/websocket';
 
 const fastify = Fastify({
@@ -68,6 +69,7 @@ fastify.register(cwsRoutes);
 fastify.register(networkRoutes);
 fastify.register(alertRoutes);
 fastify.register(scanRoutes);
+fastify.register(adminRoutes);
 
 let scanWorker: ReturnType<typeof createScanWorker> | null = null;
 

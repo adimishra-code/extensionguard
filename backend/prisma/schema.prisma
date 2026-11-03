@@ -259,20 +259,27 @@ enum EventType {
 
 // User accounts for authentication
 model User {
-  id                String            @id @default(cuid())
-  email             String            @unique
-  password_hash     String
-  api_key           String            @unique @default(cuid())
-  created_at        DateTime          @default(now())
-  updated_at        DateTime          @updatedAt
-  last_login_at     DateTime?
-  sessions          MonitorSession[]
-  community_reports CommunityReport[]
-  alerts            Alert[]
-  monitored_extensions MonitoredExtension[]
+  id                            String            @id @default(cuid())
+  email                         String            @unique
+  password_hash                 String
+  api_key                       String            @unique @default(cuid())
+  role                          String            @default("user")
+  is_verified                   Boolean           @default(false)
+  verification_token            String?
+  verification_token_expires_at DateTime?
+  reset_password_token          String?
+  reset_password_expires_at     DateTime?
+  created_at                    DateTime          @default(now())
+  updated_at                    DateTime          @updatedAt
+  last_login_at                 DateTime?
+  sessions                      MonitorSession[]
+  community_reports             CommunityReport[]
+  alerts                        Alert[]
+  monitored_extensions          MonitoredExtension[]
 
   @@index([email])
   @@index([api_key])
+  @@index([role])
 }
 
 // Active WebSocket monitoring sessions

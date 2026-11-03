@@ -40,6 +40,8 @@ describe('API Integration Tests', () => {
       email: 'test@example.com',
       password_hash: hashedPassword,
       api_key: 'eg_test_api_key_123',
+      role: 'user',
+      is_verified: false,
       created_at: new Date(),
       updated_at: new Date(),
       last_login_at: null,

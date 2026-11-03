@@ -9,6 +9,7 @@ import { ExtensionDetail } from './pages/ExtensionDetail';
 import { ThreatIntelligence } from './pages/ThreatIntelligence';
 import { DifferentialView } from './pages/DifferentialView';
 import { Settings } from './pages/Settings';
+import { AdminPanel } from './pages/AdminPanel';
 
 export function App() {
   return (
@@ -25,6 +26,7 @@ export function App() {
         <Route path="threats" element={<ThreatIntelligence />} />
         <Route path="differential" element={<DifferentialView />} />
         <Route path="settings" element={<Settings />} />
+        <Route path="admin" element={<AdminPanel />} />
       </Route>
 
 

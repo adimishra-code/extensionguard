@@ -7,6 +7,7 @@ declare module 'fastify' {
     user?: {
       userId: string;
       email: string;
+      role?: string;
     };
   }
 }
@@ -30,7 +31,7 @@ export async function authenticateJWT(
     // Verify user exists in database
     const user = await prisma.user.findUnique({
       where: { id: payload.userId },
-      select: { id: true, email: true },
+      select: { id: true, email: true, role: true },
     });
 
     if (!user) {
@@ -41,9 +42,25 @@ export async function authenticateJWT(
     request.user = {
       userId: user.id,
       email: user.email,
+      role: user.role,
     };
   } catch (error) {
     return reply.code(401).send({ error: 'Invalid token' });
+  }
+}
+
+/**
+ * Middleware that requires administrator role
+ */
+export async function authenticateAdmin(
+  request: FastifyRequest,
+  reply: FastifyReply
+) {
+  await authenticateJWT(request, reply);
+  if (reply.sent) return;
+
+  if (request.user?.role !== 'admin') {
+    return reply.code(403).send({ error: 'Forbidden: Administrator privileges required' });
   }
 }
 

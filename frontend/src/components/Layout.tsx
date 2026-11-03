@@ -1,5 +1,9 @@
 import { Outlet, NavLink, useLocation } from 'react-router-dom';
-import { Shield, Search, List, Settings, Menu, X, Package, Activity, ShieldAlert, GitCompare, Bell, Check, User, LogIn, LogOut, Key } from 'lucide-react';
+import {
+  Shield, Search, List, Settings, Menu, X, Package, Activity,
+  ShieldAlert, GitCompare, Bell, Check, User, LogIn, LogOut, Key,
+  Lock, Mail, CheckCircle2, AlertCircle
+} from 'lucide-react';
 import { useState } from 'react';
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -23,10 +27,12 @@ export function Layout() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [alertsOpen, setAlertsOpen] = useState(false);
   const [authModalOpen, setAuthModalOpen] = useState(false);
-  const [authMode, setAuthMode] = useState<'login' | 'register'>('login');
+  const [authMode, setAuthMode] = useState<'login' | 'register' | 'verify' | 'forgot'>('login');
   const [emailInput, setEmailInput] = useState('security@extensionguard.io');
   const [passwordInput, setPasswordInput] = useState('admin12345');
+  const [otpInput, setOtpInput] = useState('');
   const [authError, setAuthError] = useState<string | null>(null);
+  const [authSuccessMessage, setAuthSuccessMessage] = useState<string | null>(null);
   const location = useLocation();
 
   const isAuthed = hasAuthToken();
@@ -70,11 +76,56 @@ export function Layout() {
     onSuccess: (data) => {
       setAuthToken(data.token);
       setAuthError(null);
-      setAuthModalOpen(false);
+      if (authMode === 'register') {
+        setAuthMode('verify');
+        setAuthSuccessMessage(data.message || 'Verification code sent to your email.');
+      } else {
+        setAuthModalOpen(false);
+      }
       queryClient.invalidateQueries();
     },
     onError: (err: any) => {
       setAuthError(err.response?.data?.error || 'Authentication failed. Please verify credentials.');
+      setAuthSuccessMessage(null);
+    },
+  });
+
+  const verifyMutation = useMutation({
+    mutationFn: (code: string) => authApi.verifyEmail({ email: emailInput, code }).then(r => r.data),
+    onSuccess: (data) => {
+      setAuthSuccessMessage(data.message);
+      setAuthError(null);
+      queryClient.invalidateQueries({ queryKey: ['auth-profile'] });
+      setTimeout(() => {
+        setAuthModalOpen(false);
+        setAuthSuccessMessage(null);
+      }, 1500);
+    },
+    onError: (err: any) => {
+      setAuthError(err.response?.data?.error || 'Verification failed. Please check the code.');
+      setAuthSuccessMessage(null);
+    },
+  });
+
+  const resendMutation = useMutation({
+    mutationFn: (email: string) => authApi.resendVerification(email).then(r => r.data),
+    onSuccess: (data) => {
+      setAuthSuccessMessage(data.message);
+      setAuthError(null);
+    },
+    onError: (err: any) => {
+      setAuthError(err.response?.data?.error || 'Failed to resend code');
+    },
+  });
+
+  const forgotMutation = useMutation({
+    mutationFn: (email: string) => authApi.forgotPassword(email).then(r => r.data),
+    onSuccess: (data) => {
+      setAuthSuccessMessage(data.message);
+      setAuthError(null);
+    },
+    onError: (err: any) => {
+      setAuthError(err.response?.data?.error || 'Failed to send reset link');
     },
   });
 
@@ -90,6 +141,11 @@ export function Layout() {
   const alerts = alertsData || [];
   const unreadAlerts = alerts.filter((a) => !a.read);
   const isHealthy = health?.status === 'ok' || health?.status === 'healthy';
+
+  const navItems = [
+    ...navigation,
+    ...(userProfile?.role === 'admin' ? [{ name: 'Admin Panel', href: '/admin', icon: Lock }] : []),
+  ];
 
 
   return (
@@ -115,7 +171,7 @@ export function Layout() {
           </button>
         </div>
         <nav className="flex-1 p-4 space-y-1 overflow-y-auto">
-          {navigation.map((item) => {
+          {navItems.map((item) => {
             const Icon = item.icon;
             const isActive = location.pathname === item.href ||
               (item.href !== '/dashboard' && location.pathname.startsWith(item.href));
@@ -126,7 +182,7 @@ export function Layout() {
                 className={cn(
                   'flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors',
                   isActive
-                    ? 'bg-primary-50 text-primary-700'
+                    ? 'bg-primary-50 text-primary-700 font-semibold'
                     : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
                 )}
                 onClick={() => setSidebarOpen(false)}
@@ -177,7 +233,7 @@ export function Layout() {
             </button>
             <div className="flex-1 lg:flex-none">
               <h1 className="text-lg font-semibold text-gray-900 truncate">
-                {navigation.find(n => location.pathname === n.href || location.pathname.startsWith(n.href))?.name || 'ExtensionGuard'}
+                {navItems.find(n => location.pathname === n.href || (n.href !== '/dashboard' && location.pathname.startsWith(n.href)))?.name || 'ExtensionGuard'}
               </h1>
             </div>
             <div className="relative flex items-center gap-3">
@@ -269,6 +325,11 @@ export function Layout() {
                   <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-lg bg-gray-100 text-xs text-gray-700">
                     <User className="h-3.5 w-3.5 text-primary-600" />
                     <span className="font-medium truncate max-w-[150px]">{userProfile.email}</span>
+                    {userProfile.role === 'admin' && (
+                      <span className="px-1.5 py-0.5 rounded bg-red-100 text-red-700 text-[10px] font-semibold">
+                        Admin
+                      </span>
+                    )}
                   </div>
                   <button
                     onClick={handleLogout}
@@ -281,7 +342,12 @@ export function Layout() {
               ) : (
                 <div className="flex items-center gap-2">
                   <button
-                    onClick={() => setAuthModalOpen(true)}
+                    onClick={() => {
+                      setAuthMode('login');
+                      setAuthError(null);
+                      setAuthSuccessMessage(null);
+                      setAuthModalOpen(true);
+                    }}
                     className="btn-primary text-xs py-1.5 px-3 flex items-center gap-1.5"
                   >
                     <LogIn className="h-3.5 w-3.5" /> Sign In / Demo
@@ -293,104 +359,292 @@ export function Layout() {
           </div>
         </header>
 
+        {/* Unverified Email Alert Banner */}
+        {isAuthed && userProfile && !userProfile.is_verified && (
+          <div className="bg-amber-50 border-b border-amber-200 px-4 py-2 sm:px-6 flex items-center justify-between text-xs text-amber-800">
+            <div className="flex items-center gap-2">
+              <AlertCircle className="h-4 w-4 text-amber-600 flex-shrink-0" />
+              <span>
+                Your email address <strong>{userProfile.email}</strong> is unverified.
+              </span>
+            </div>
+            <button
+              onClick={() => {
+                setEmailInput(userProfile.email);
+                setAuthMode('verify');
+                setAuthError(null);
+                setAuthSuccessMessage(null);
+                setAuthModalOpen(true);
+              }}
+              className="font-medium text-amber-900 underline hover:text-amber-700 ml-4 flex-shrink-0"
+            >
+              Verify with Code →
+            </button>
+          </div>
+        )}
+
         {/* Authentication Modal */}
         {authModalOpen && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50">
             <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 space-y-4 relative">
               <button
-                onClick={() => setAuthModalOpen(false)}
+                onClick={() => {
+                  setAuthModalOpen(false);
+                  setAuthError(null);
+                  setAuthSuccessMessage(null);
+                }}
                 className="absolute top-4 right-4 text-gray-400 hover:text-gray-600"
               >
                 <X className="h-5 w-5" />
               </button>
 
+              {/* Mode Header */}
               <div className="text-center space-y-1">
                 <div className="h-12 w-12 rounded-2xl bg-primary-100 text-primary-600 flex items-center justify-center mx-auto mb-2">
-                  <Key className="h-6 w-6" />
+                  {authMode === 'verify' ? (
+                    <Mail className="h-6 w-6" />
+                  ) : authMode === 'forgot' ? (
+                    <Lock className="h-6 w-6" />
+                  ) : (
+                    <Key className="h-6 w-6" />
+                  )}
                 </div>
                 <h3 className="text-xl font-bold text-gray-900">
-                  {authMode === 'login' ? 'Sign In to ExtensionGuard' : 'Create an Account'}
+                  {authMode === 'login' && 'Sign In to ExtensionGuard'}
+                  {authMode === 'register' && 'Create an Account'}
+                  {authMode === 'verify' && 'Verify Your Email'}
+                  {authMode === 'forgot' && 'Reset Password'}
                 </h3>
                 <p className="text-xs text-gray-500">
-                  Access live threat intelligence, differential analysis & alert triage
+                  {authMode === 'login' && 'Access live threat intelligence, differential analysis & alert triage'}
+                  {authMode === 'register' && 'Enter your email to receive an email verification code'}
+                  {authMode === 'verify' && `Enter the 6-digit verification code sent to ${emailInput}`}
+                  {authMode === 'forgot' && 'We will send you a password reset token and instructions'}
                 </p>
               </div>
 
-              {/* Quick Demo Login Banner */}
-              <div className="p-3 bg-primary-50 rounded-xl border border-primary-200 text-center space-y-2">
-                <p className="text-xs text-primary-800 font-medium">Testing locally or in evaluation mode?</p>
-                <button
-                  type="button"
-                  onClick={handleQuickDemoLogin}
-                  disabled={loginMutation.isPending}
-                  className="w-full py-2 px-3 rounded-lg bg-primary-600 hover:bg-primary-700 text-white font-medium text-xs transition-colors shadow-sm"
-                >
-                  {loginMutation.isPending ? 'Authenticating...' : '⚡ Quick Login as Demo Analyst'}
-                </button>
-              </div>
-
-              <div className="relative flex py-1 items-center">
-                <div className="flex-grow border-t border-gray-200"></div>
-                <span className="flex-shrink mx-3 text-xs text-gray-400 uppercase">Or with credentials</span>
-                <div className="flex-grow border-t border-gray-200"></div>
-              </div>
-
+              {/* Feedback Banners */}
+              {authSuccessMessage && (
+                <div className="p-3 rounded-lg bg-green-50 text-green-800 text-xs border border-green-200 flex items-start gap-2">
+                  <CheckCircle2 className="h-4 w-4 text-green-600 flex-shrink-0 mt-0.5" />
+                  <span>{authSuccessMessage}</span>
+                </div>
+              )}
               {authError && (
-                <div className="p-2.5 rounded-lg bg-danger-50 text-danger-800 text-xs border border-danger-200">
-                  {authError}
+                <div className="p-3 rounded-lg bg-danger-50 text-danger-800 text-xs border border-danger-200 flex items-start gap-2">
+                  <AlertCircle className="h-4 w-4 text-danger-600 flex-shrink-0 mt-0.5" />
+                  <span>{authError}</span>
                 </div>
               )}
 
-              <form
-                onSubmit={(e) => {
-                  e.preventDefault();
-                  loginMutation.mutate({ email: emailInput, pass: passwordInput });
-                }}
-                className="space-y-3"
-              >
-                <div>
-                  <label className="block text-xs font-medium text-gray-700 mb-1">Email Address</label>
-                  <input
-                    type="email"
-                    value={emailInput}
-                    onChange={(e) => setEmailInput(e.target.value)}
-                    required
-                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
-                  />
+              {/* Login & Register Forms */}
+              {(authMode === 'login' || authMode === 'register') && (
+                <>
+                  {authMode === 'login' && (
+                    <>
+                      <div className="p-3 bg-primary-50 rounded-xl border border-primary-200 text-center space-y-2">
+                        <p className="text-xs text-primary-800 font-medium">Testing or evaluating ExtensionGuard?</p>
+                        <button
+                          type="button"
+                          onClick={handleQuickDemoLogin}
+                          disabled={loginMutation.isPending}
+                          className="w-full py-2 px-3 rounded-lg bg-primary-600 hover:bg-primary-700 text-white font-medium text-xs transition-colors shadow-sm"
+                        >
+                          {loginMutation.isPending ? 'Authenticating...' : '⚡ Quick Login as Super Admin'}
+                        </button>
+                      </div>
+
+                      <div className="relative flex py-1 items-center">
+                        <div className="flex-grow border-t border-gray-200"></div>
+                        <span className="flex-shrink mx-3 text-xs text-gray-400 uppercase">Or with credentials</span>
+                        <div className="flex-grow border-t border-gray-200"></div>
+                      </div>
+                    </>
+                  )}
+
+                  <form
+                    onSubmit={(e) => {
+                      e.preventDefault();
+                      setAuthError(null);
+                      setAuthSuccessMessage(null);
+                      loginMutation.mutate({ email: emailInput, pass: passwordInput });
+                    }}
+                    className="space-y-3"
+                  >
+                    <div>
+                      <label className="block text-xs font-medium text-gray-700 mb-1">Email Address</label>
+                      <input
+                        type="email"
+                        value={emailInput}
+                        onChange={(e) => setEmailInput(e.target.value)}
+                        required
+                        className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
+                        placeholder="you@company.com"
+                      />
+                    </div>
+
+                    <div>
+                      <div className="flex items-center justify-between mb-1">
+                        <label className="block text-xs font-medium text-gray-700">Password</label>
+                        {authMode === 'login' && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setAuthMode('forgot');
+                              setAuthError(null);
+                              setAuthSuccessMessage(null);
+                            }}
+                            className="text-xs text-primary-600 hover:underline"
+                          >
+                            Forgot password?
+                          </button>
+                        )}
+                      </div>
+                      <input
+                        type="password"
+                        value={passwordInput}
+                        onChange={(e) => setPasswordInput(e.target.value)}
+                        required
+                        className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
+                        placeholder="••••••••"
+                      />
+                    </div>
+
+                    <button
+                      type="submit"
+                      disabled={loginMutation.isPending}
+                      className="w-full btn-secondary text-sm py-2 font-medium"
+                    >
+                      {loginMutation.isPending
+                        ? 'Processing...'
+                        : authMode === 'login'
+                        ? 'Sign In'
+                        : 'Create Account & Send Verification'}
+                    </button>
+                  </form>
+
+                  <div className="text-center pt-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setAuthMode(authMode === 'login' ? 'register' : 'login');
+                        setAuthError(null);
+                        setAuthSuccessMessage(null);
+                      }}
+                      className="text-xs text-primary-600 hover:underline"
+                    >
+                      {authMode === 'login'
+                        ? "Don't have an account? Register here"
+                        : 'Already have an account? Sign In'}
+                    </button>
+                  </div>
+                </>
+              )}
+
+              {/* Verify OTP Mode */}
+              {authMode === 'verify' && (
+                <div className="space-y-4">
+                  <form
+                    onSubmit={(e) => {
+                      e.preventDefault();
+                      if (!otpInput.trim()) return;
+                      verifyMutation.mutate(otpInput.trim());
+                    }}
+                    className="space-y-3"
+                  >
+                    <div>
+                      <label className="block text-xs font-medium text-gray-700 mb-1">Verification Code / Token</label>
+                      <input
+                        type="text"
+                        value={otpInput}
+                        onChange={(e) => setOtpInput(e.target.value)}
+                        placeholder="e.g. 123456"
+                        required
+                        maxLength={64}
+                        className="w-full px-3 py-2 text-center text-lg tracking-widest font-mono border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
+                      />
+                    </div>
+
+                    <button
+                      type="submit"
+                      disabled={verifyMutation.isPending}
+                      className="w-full btn-primary text-sm py-2 font-medium"
+                    >
+                      {verifyMutation.isPending ? 'Verifying...' : 'Verify Code'}
+                    </button>
+                  </form>
+
+                  <div className="flex items-center justify-between text-xs pt-2">
+                    <button
+                      type="button"
+                      onClick={() => resendMutation.mutate(emailInput)}
+                      disabled={resendMutation.isPending}
+                      className="text-primary-600 hover:underline"
+                    >
+                      {resendMutation.isPending ? 'Resending...' : 'Resend Code'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setAuthMode('login');
+                        setAuthError(null);
+                        setAuthSuccessMessage(null);
+                      }}
+                      className="text-gray-500 hover:underline"
+                    >
+                      Back to Sign In
+                    </button>
+                  </div>
                 </div>
+              )}
 
-                <div>
-                  <label className="block text-xs font-medium text-gray-700 mb-1">Password</label>
-                  <input
-                    type="password"
-                    value={passwordInput}
-                    onChange={(e) => setPasswordInput(e.target.value)}
-                    required
-                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
-                  />
+              {/* Forgot Password Mode */}
+              {authMode === 'forgot' && (
+                <div className="space-y-4">
+                  <form
+                    onSubmit={(e) => {
+                      e.preventDefault();
+                      if (!emailInput.trim()) return;
+                      forgotMutation.mutate(emailInput.trim());
+                    }}
+                    className="space-y-3"
+                  >
+                    <div>
+                      <label className="block text-xs font-medium text-gray-700 mb-1">Email Address</label>
+                      <input
+                        type="email"
+                        value={emailInput}
+                        onChange={(e) => setEmailInput(e.target.value)}
+                        required
+                        className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
+                        placeholder="you@company.com"
+                      />
+                    </div>
+
+                    <button
+                      type="submit"
+                      disabled={forgotMutation.isPending}
+                      className="w-full btn-primary text-sm py-2 font-medium"
+                    >
+                      {forgotMutation.isPending ? 'Sending...' : 'Send Reset Instructions'}
+                    </button>
+                  </form>
+
+                  <div className="text-center text-xs pt-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setAuthMode('login');
+                        setAuthError(null);
+                        setAuthSuccessMessage(null);
+                      }}
+                      className="text-primary-600 hover:underline"
+                    >
+                      Back to Sign In
+                    </button>
+                  </div>
                 </div>
-
-                <button
-                  type="submit"
-                  disabled={loginMutation.isPending}
-                  className="w-full btn-secondary text-sm py-2 font-medium"
-                >
-                  {loginMutation.isPending ? 'Processing...' : authMode === 'login' ? 'Sign In' : 'Register'}
-                </button>
-              </form>
-
-              <div className="text-center pt-2">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setAuthMode(authMode === 'login' ? 'register' : 'login');
-                    setAuthError(null);
-                  }}
-                  className="text-xs text-primary-600 hover:underline"
-                >
-                  {authMode === 'login' ? "Don't have an account? Register here" : 'Already have an account? Sign In'}
-                </button>
-              </div>
+              )}
             </div>
           </div>
         )}

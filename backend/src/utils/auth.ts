@@ -9,6 +9,7 @@ const API_KEY_PREFIX = 'eg_';
 export interface JWTPayload {
   userId: string;
   email: string;
+  role?: string;
 }
 
 export class AuthService {

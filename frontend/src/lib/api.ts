@@ -111,22 +111,93 @@ export const healthApi = {
 
 export const authApi = {
   register: (email: string, password: string) =>
-    api.post<{ token: string; user: { id: string; email: string; api_key: string } }>(
+    api.post<{ token: string; user: { id: string; email: string; role: string; is_verified: boolean; api_key: string }; message?: string }>(
       '/auth/register',
       { email, password }
     ),
 
   login: (email: string, password: string) =>
-    api.post<{ token: string; user: { id: string; email: string; api_key: string } }>(
+    api.post<{ token: string; user: { id: string; email: string; role: string; is_verified: boolean; api_key: string }; message?: string }>(
       '/auth/login',
       { email, password }
     ),
 
+  verifyEmail: (data: { email?: string; code?: string; token?: string }) =>
+    api.post<{ success: boolean; message: string; user?: any }>(
+      '/auth/verify-email',
+      data
+    ),
+
+  resendVerification: (email: string) =>
+    api.post<{ message: string }>(
+      '/auth/resend-verification',
+      { email }
+    ),
+
+  forgotPassword: (email: string) =>
+    api.post<{ message: string }>(
+      '/auth/forgot-password',
+      { email }
+    ),
+
+  resetPassword: (data: { token: string; password: string }) =>
+    api.post<{ message: string }>(
+      '/auth/reset-password',
+      data
+    ),
+
   profile: () =>
-    api.get('/auth/profile'),
+    api.get<{ user: { id: string; email: string; role: string; is_verified: boolean; api_key: string; created_at: string; last_login_at: string | null } }>('/auth/profile'),
 
   regenerateApiKey: () =>
     api.post('/auth/regenerate-api-key'),
+};
+
+export const adminApi = {
+  getStats: () =>
+    api.get<{
+      users: { total: number; verified: number; unverified: number };
+      scans: { total: number; extensions: number };
+      security: { critical_findings: number; high_findings: number; active_monitoring_sessions: number };
+    }>('/admin/stats'),
+
+  getUsers: (params?: { limit?: number; offset?: number; search?: string }) =>
+    api.get<{
+      users: Array<{
+        id: string;
+        email: string;
+        role: string;
+        is_verified: boolean;
+        created_at: string;
+        last_login_at: string | null;
+        _count: { sessions: number; alerts: number; community_reports: number };
+      }>;
+      total: number;
+      limit: number;
+      offset: number;
+    }>('/admin/users', { params }),
+
+  updateRole: (userId: string, role: 'user' | 'admin') =>
+    api.post<{ message: string; user: any }>(`/admin/users/${userId}/role`, { role }),
+
+  deleteUser: (userId: string) =>
+    api.delete<{ success: boolean; message: string }>(`/admin/users/${userId}`),
+
+  getSystem: () =>
+    api.get<{
+      node_version: string;
+      platform: string;
+      arch: string;
+      uptime_seconds: number;
+      environment: string;
+      analyzer_version: string;
+      ruleset_version: string;
+      memory: { heap_used_mb: number; heap_total_mb: number; rss_mb: number };
+      llm: { provider: string; model: string };
+    }>('/admin/system'),
+
+  cleanUploads: () =>
+    api.post<{ message: string; deletedFiles: number; reclaimedMb?: string }>('/admin/maintenance/clean-uploads'),
 };
 
 export const threatIntelApi = {
