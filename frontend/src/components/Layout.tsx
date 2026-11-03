@@ -89,7 +89,7 @@ export function Layout() {
 
   const alerts = alertsData || [];
   const unreadAlerts = alerts.filter((a) => !a.read);
-  const isHealthy = health?.status === 'ok';
+  const isHealthy = health?.status === 'ok' || health?.status === 'healthy';
 
 
   return (
