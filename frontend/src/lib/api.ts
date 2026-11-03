@@ -77,6 +77,12 @@ export const scansApi = {
     );
   },
 
+  createFromCws: (extensionId: string, scanType: ScanType = 'quick') =>
+    api.post<{ scan_id: string; extension_id: string; status: string; message: string }>(
+      '/scans/cws',
+      { extensionId, scanType }
+    ),
+
   delete: (id: string) =>
     api.delete<{ success: boolean }>(`/scans/${id}`),
 

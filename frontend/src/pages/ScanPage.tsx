@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { Upload, FileText, Shield, AlertCircle, CheckCircle, X } from 'lucide-react';
+import { Upload, FileText, Shield, AlertCircle, CheckCircle, X, Globe, ArrowRight } from 'lucide-react';
 import { scansApi } from '../lib/api';
 import { cn } from '../lib/utils';
 import type { ScanType } from '@extension-guard/shared';
@@ -14,18 +14,26 @@ const scanTypes: { value: ScanType; label: string; description: string; icon: Re
 
 const ACCEPTED_TYPES = ['.zip', '.crx'];
 
+const POPULAR_EXTENSIONS = [
+  { name: 'uBlock Origin', id: 'cjpalhdlnbpafiamejdnhcphjbkeiagm' },
+  { name: 'MetaMask', id: 'nkbihfbeogaeaoehlefnkodbefgpgknn' },
+  { name: 'Grammarly', id: 'kbfnbcaeplbcioakkpcpgfkobkghlhen' },
+];
+
 function isValidExtension(file: File): boolean {
   return ACCEPTED_TYPES.some(ext => file.name.toLowerCase().endsWith(ext));
 }
 
 export function ScanPage() {
   const queryClient = useQueryClient();
+  const [sourceTab, setSourceTab] = useState<'cws' | 'upload'>('cws');
+  const [cwsInput, setCwsInput] = useState('');
   const [file, setFile] = useState<File | null>(null);
   const [scanType, setScanType] = useState<ScanType>('quick');
   const [dragActive, setDragActive] = useState(false);
-  const [fileError, setFileError] = useState<string | null>(null);
+  const [inputError, setInputError] = useState<string | null>(null);
 
-  const { mutate: createScan, isPending, error } = useMutation({
+  const { mutate: createUploadScan, isPending: isUploading } = useMutation({
     mutationFn: ({ file, scanType }: { file: File; scanType: ScanType }) => 
       scansApi.create(file, scanType).then(r => r.data),
     onSuccess: (data) => {
@@ -33,7 +41,25 @@ export function ScanPage() {
       queryClient.invalidateQueries({ queryKey: ['dashboard'] });
       window.location.href = `/scans/${data.scan_id}`;
     },
+    onError: (err: any) => {
+      setInputError(err.response?.data?.error || err.message || 'Upload scan failed');
+    },
   });
+
+  const { mutate: createCwsScan, isPending: isFetchingCws } = useMutation({
+    mutationFn: ({ extensionId, scanType }: { extensionId: string; scanType: ScanType }) =>
+      scansApi.createFromCws(extensionId, scanType).then(r => r.data),
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['scans'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+      window.location.href = `/scans/${data.scan_id}`;
+    },
+    onError: (err: any) => {
+      setInputError(err.response?.data?.error || err.message || 'Chrome Web Store fetch failed');
+    },
+  });
+
+  const isPending = isUploading || isFetchingCws;
 
   const handleDrag = (e: React.DragEvent) => {
     e.preventDefault();
@@ -52,10 +78,10 @@ export function ScanPage() {
     const dropped = e.dataTransfer.files[0];
     if (dropped) {
       if (!isValidExtension(dropped)) {
-        setFileError('Only .zip and .crx files are supported.');
+        setInputError('Only .zip and .crx files are supported.');
         return;
       }
-      setFileError(null);
+      setInputError(null);
       setFile(dropped);
     }
   };
@@ -64,79 +90,172 @@ export function ScanPage() {
     const selected = e.target.files?.[0];
     if (selected) {
       if (!isValidExtension(selected)) {
-        setFileError('Only .zip and .crx files are supported.');
+        setInputError('Only .zip and .crx files are supported.');
         return;
       }
-      setFileError(null);
+      setInputError(null);
       setFile(selected);
     }
   };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (file) {
-      createScan({ file, scanType });
+    setInputError(null);
+
+    if (sourceTab === 'cws') {
+      if (!cwsInput.trim()) {
+        setInputError('Please enter a Chrome Web Store extension ID or link.');
+        return;
+      }
+      createCwsScan({ extensionId: cwsInput.trim(), scanType });
+    } else {
+      if (!file) {
+        setInputError('Please select or drop an extension file.');
+        return;
+      }
+      createUploadScan({ file, scanType });
     }
   };
 
-  const removeFile = () => { setFile(null); setFileError(null); };
+  const removeFile = () => { setFile(null); setInputError(null); };
 
   return (
     <div className="max-w-3xl mx-auto space-y-6">
       <div>
         <h1 className="text-2xl font-bold text-gray-900">New Security Scan</h1>
-        <p className="text-gray-500 mt-1">Upload a Chrome extension (.zip or .crx) to analyze for security and privacy risks</p>
+        <p className="text-gray-500 mt-1">Scan Chrome extensions directly from the Chrome Web Store or upload local .zip / .crx files</p>
+      </div>
+
+      {/* Source Selection Tabs */}
+      <div className="flex border-b border-gray-200">
+        <button
+          type="button"
+          onClick={() => { setSourceTab('cws'); setInputError(null); }}
+          className={cn(
+            'flex items-center gap-2 py-3 px-6 text-sm font-medium border-b-2 transition-all',
+            sourceTab === 'cws'
+              ? 'border-primary-600 text-primary-600 bg-primary-50/50 rounded-t-lg'
+              : 'border-transparent text-gray-500 hover:text-gray-700'
+          )}
+        >
+          <Globe className="h-4 w-4" />
+          From Chrome Web Store
+        </button>
+        <button
+          type="button"
+          onClick={() => { setSourceTab('upload'); setInputError(null); }}
+          className={cn(
+            'flex items-center gap-2 py-3 px-6 text-sm font-medium border-b-2 transition-all',
+            sourceTab === 'upload'
+              ? 'border-primary-600 text-primary-600 bg-primary-50/50 rounded-t-lg'
+              : 'border-transparent text-gray-500 hover:text-gray-700'
+          )}
+        >
+          <Upload className="h-4 w-4" />
+          Upload Local Package (.zip / .crx)
+        </button>
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-6">
-        <div className="card p-6">
-          <div
-            className={cn(
-              'border-2 border-dashed rounded-xl p-8 text-center transition-colors',
-              dragActive ? 'border-primary-500 bg-primary-50' : 'border-gray-300 hover:border-primary-400'
-            )}
-            onDragEnter={handleDrag}
-            onDragLeave={handleDrag}
-            onDragOver={handleDrag}
-            onDrop={handleDrop}
-          >
-            <input
-              type="file"
-              id="extension-file"
-              accept=".zip,.crx"
-              onChange={handleFileSelect}
-              className="hidden"
-              disabled={isPending}
-            />
-            <label htmlFor="extension-file" className="cursor-pointer">
-              <Upload className="h-12 w-12 mx-auto text-gray-400 mb-4" />
-              <p className="text-lg font-medium text-gray-900">Drop extension file here or click to browse</p>
-              <p className="text-sm text-gray-500 mt-1">Supports .zip and .crx files (max 50MB)</p>
-            </label>
-            
-            {file && (
-              <div className="mt-4 p-4 bg-white rounded-lg border border-gray-200 text-left">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <FileText className="h-8 w-8 text-primary-600" />
-                    <div>
-                      <p className="font-medium text-gray-900">{file.name}</p>
-                      <p className="text-sm text-gray-500">{(file.size / 1024 / 1024).toFixed(2)} MB</p>
-                    </div>
-                  </div>
+        {sourceTab === 'cws' ? (
+          <div className="card p-6 space-y-4">
+            <div>
+              <label htmlFor="cws-id-input" className="block text-sm font-semibold text-gray-900 mb-1">
+                Chrome Web Store Extension ID or URL
+              </label>
+              <p className="text-xs text-gray-500 mb-3">
+                Paste any Chrome Web Store link or enter the 32-character extension ID. ExtensionGuard will download, inspect, and analyze it automatically.
+              </p>
+              <div className="relative">
+                <input
+                  id="cws-id-input"
+                  type="text"
+                  value={cwsInput}
+                  onChange={(e) => { setCwsInput(e.target.value); setInputError(null); }}
+                  placeholder="e.g. cjpalhdlnbpafiamejdnhcphjbkeiagm or https://chromewebstore.google.com/detail/..."
+                  className="w-full pl-4 pr-10 py-3 rounded-xl border border-gray-300 focus:outline-none focus:ring-2 focus:ring-primary-500 text-gray-900 text-sm shadow-sm font-mono"
+                  disabled={isPending}
+                />
+                {cwsInput && (
                   <button
                     type="button"
-                    onClick={removeFile}
-                    className="text-gray-400 hover:text-gray-600 p-1"
-                    aria-label="Remove file"
+                    onClick={() => setCwsInput('')}
+                    className="absolute right-3 top-3 text-gray-400 hover:text-gray-600"
                   >
-                    <X className="h-5 w-5" />
+                    <X className="h-4 w-4" />
                   </button>
-                </div>
+                )}
               </div>
-            )}
+            </div>
+
+            {/* Quick Demo Samples */}
+            <div className="pt-2">
+              <p className="text-xs font-medium text-gray-500 mb-2">Try a popular extension:</p>
+              <div className="flex flex-wrap gap-2">
+                {POPULAR_EXTENSIONS.map((ext) => (
+                  <button
+                    key={ext.id}
+                    type="button"
+                    onClick={() => { setCwsInput(ext.id); setInputError(null); }}
+                    className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium bg-gray-100 hover:bg-primary-50 hover:text-primary-700 text-gray-700 border border-gray-200 transition-colors"
+                  >
+                    <span>{ext.name}</span>
+                    <ArrowRight className="h-3 w-3 opacity-60" />
+                  </button>
+                ))}
+              </div>
+            </div>
           </div>
-        </div>
+        ) : (
+          <div className="card p-6">
+            <div
+              className={cn(
+                'border-2 border-dashed rounded-xl p-8 text-center transition-colors',
+                dragActive ? 'border-primary-500 bg-primary-50' : 'border-gray-300 hover:border-primary-400'
+              )}
+              onDragEnter={handleDrag}
+              onDragLeave={handleDrag}
+              onDragOver={handleDrag}
+              onDrop={handleDrop}
+            >
+              <input
+                type="file"
+                id="extension-file"
+                accept=".zip,.crx"
+                onChange={handleFileSelect}
+                className="hidden"
+                disabled={isPending}
+              />
+              <label htmlFor="extension-file" className="cursor-pointer">
+                <Upload className="h-12 w-12 mx-auto text-gray-400 mb-4" />
+                <p className="text-lg font-medium text-gray-900">Drop extension file here or click to browse</p>
+                <p className="text-sm text-gray-500 mt-1">Supports .zip and .crx files (max 50MB)</p>
+              </label>
+              
+              {file && (
+                <div className="mt-4 p-4 bg-white rounded-lg border border-gray-200 text-left">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <FileText className="h-8 w-8 text-primary-600" />
+                      <div>
+                        <p className="font-medium text-gray-900">{file.name}</p>
+                        <p className="text-sm text-gray-500">{(file.size / 1024 / 1024).toFixed(2)} MB</p>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={removeFile}
+                      className="text-gray-400 hover:text-gray-600 p-1"
+                      aria-label="Remove file"
+                    >
+                      <X className="h-5 w-5" />
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
 
         <div className="card p-6">
           <h3 className="text-lg font-semibold text-gray-900 mb-4">Select Scan Type</h3>
@@ -175,11 +294,11 @@ export function ScanPage() {
           </div>
         </div>
 
-        {(fileError || error) && (
+        {inputError && (
           <div className="card p-4 border-danger-200 bg-danger-50">
             <div className="flex items-center gap-3 text-danger-700">
               <AlertCircle className="h-5 w-5 flex-shrink-0" />
-              <p>{fileError || (error as any)?.response?.data?.error || (error instanceof Error ? error.message : 'Failed to create scan')}</p>
+              <p className="text-sm">{inputError}</p>
             </div>
           </div>
         )}
@@ -187,7 +306,7 @@ export function ScanPage() {
         <div className="flex justify-end">
           <button
             type="submit"
-            disabled={!file || isPending}
+            disabled={(sourceTab === 'upload' && !file) || (sourceTab === 'cws' && !cwsInput.trim()) || isPending}
             className="btn-primary px-8"
           >
             {isPending ? (
@@ -196,10 +315,10 @@ export function ScanPage() {
                   <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
                   <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
                 </svg>
-                Starting scan...
+                {sourceTab === 'cws' ? 'Fetching from Web Store...' : 'Uploading & Analyzing...'}
               </span>
             ) : (
-              'Start Analysis'
+              sourceTab === 'cws' ? 'Fetch & Start Scan' : 'Start Analysis'
             )}
           </button>
         </div>

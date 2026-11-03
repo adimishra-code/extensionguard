@@ -3,7 +3,7 @@ import { prisma } from '../utils/prisma';
 import { addScanJob, scanQueue, ScanJobData } from '../queue';
 import { logger } from '../utils/logger';
 import { config } from '../config';
-import { writeFileSync, mkdirSync, rmSync } from 'fs';
+import { writeFileSync, mkdirSync, rmSync, existsSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
 import { ScanType, ScanConfig, ExtensionManifest } from '@extension-guard/shared';
@@ -216,6 +216,157 @@ export async function scanRoutes(fastify: FastifyInstance) {
       });
     } catch (error) {
       logger_.error({ error }, 'Scan creation failed');
+      return reply.code(500).send({ error: 'Internal server error' });
+    }
+  });
+
+  // POST /api/scans/cws - Fetch extension directly from Chrome Web Store and scan
+  fastify.post('/api/scans/cws', {
+    config: { rateLimit: { max: 10, timeWindow: '1 minute' } },
+  }, async (request: FastifyRequest<{ Body: { extensionId: string; scanType?: ScanType } }>, reply: FastifyReply) => {
+    const logger_ = logger.child({ route: 'POST /api/scans/cws' });
+
+    try {
+      const { extensionId: rawInput, scanType = 'quick' } = (request.body || {}) as { extensionId?: string; scanType?: ScanType };
+
+      if (!rawInput || typeof rawInput !== 'string') {
+        return reply.code(400).send({ error: 'Extension ID or Chrome Web Store URL is required' });
+      }
+
+      const input = rawInput.trim();
+      let cleanId = input;
+      const match = input.match(/([a-p]{32})/i);
+      if (match && match[1]) {
+        cleanId = match[1].toLowerCase();
+      } else {
+        const urlClean = input.split('?')[0]?.split('#')[0]?.replace(/\/+$/, '') || '';
+        const segment = urlClean.split('/').pop() || '';
+        if (segment.length >= 16) {
+          cleanId = segment.toLowerCase();
+        } else {
+          return reply.code(400).send({ 
+            error: 'Invalid Chrome Web Store identifier. Please enter a 32-character extension ID or paste a Web Store URL.' 
+          });
+        }
+      }
+
+      logger_.info({ extensionId: cleanId, scanType }, 'Downloading CRX from Chrome Web Store');
+
+      const crxUrl = `https://clients2.google.com/service/update2/crx?response=redirect&prodversion=120.0&acceptformat=crx2,crx3&x=id%3D${cleanId}%26uc`;
+
+      let crxBuffer: Buffer;
+      try {
+        const response = await fetch(crxUrl, {
+          signal: AbortSignal.timeout(15000),
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+          },
+        });
+
+        if (!response.ok) {
+          return reply.code(404).send({ 
+            error: `Extension "${cleanId}" could not be retrieved from Chrome Web Store (HTTP ${response.status}). It may be private, paid, or removed.` 
+          });
+        }
+
+        const arrayBuffer = await response.arrayBuffer();
+        crxBuffer = Buffer.from(arrayBuffer);
+      } catch (err) {
+        logger_.error({ err, cleanId }, 'CRX download error');
+        return reply.code(502).send({ 
+          error: `Failed to download extension from Google update server: ${(err as Error)?.message || 'Connection timeout'}` 
+        });
+      }
+
+      const zipBuffer = extractZipBuffer(crxBuffer);
+      if (zipBuffer.length < 4 || (zipBuffer[0] !== 0x50 && zipBuffer[1] !== 0x4b)) {
+        return reply.code(400).send({ 
+          error: 'Chrome Web Store returned an invalid or encrypted package that could not be extracted.' 
+        });
+      }
+
+      if (!existsSync(config.UPLOAD_DIR)) {
+        mkdirSync(config.UPLOAD_DIR, { recursive: true });
+      }
+
+      const hash = crypto.createHash('sha256').update(zipBuffer).digest('hex');
+      const filename = `cws-${cleanId}-${Date.now()}.zip`;
+      const filePath = join(config.UPLOAD_DIR, filename);
+
+      writeFileSync(filePath, zipBuffer);
+
+      let manifest: ExtensionManifest;
+      try {
+        manifest = await parseManifest(filePath);
+      } catch (manifestErr) {
+        rmSync(filePath, { force: true });
+        return reply.code(400).send({ error: 'Downloaded package does not contain a valid manifest.json' });
+      }
+
+      const extension = await prisma.extension.upsert({
+        where: { hash },
+        update: { last_scanned_at: new Date() },
+        create: {
+          name: manifest.name || `Extension ${cleanId.slice(0, 8)}`,
+          version: manifest.version || '1.0.0',
+          browser: 'chrome',
+          source: 'cws',
+          hash,
+          size_bytes: zipBuffer.length,
+          manifest_json: manifest as any,
+        },
+      });
+
+      const scanConfig = {
+        enable_static: scanType !== 'sandbox',
+        enable_runtime: scanType === 'sandbox' || scanType === 'full',
+        enable_network: scanType === 'deep' || scanType === 'full',
+        enable_data_flow: scanType === 'deep' || scanType === 'full',
+        enable_llm: scanType === 'full' || scanType === 'deep',
+        runtime_timeout_seconds: 120,
+        max_file_size_mb: 50,
+        rulesets: ['owasp', 'malware', 'privacy'],
+      };
+
+      const scan = await prisma.scan.create({
+        data: {
+          extension_id: extension.id,
+          type: scanType,
+          status: 'pending',
+          config_json: scanConfig as any,
+          manifest_hash: hash,
+          analyzer_version: config.ANALYZER_VERSION,
+          ruleset_version: config.RULESET_VERSION,
+        },
+      });
+
+      const jobData: ScanJobData = {
+        scanId: scan.id,
+        extensionId: extension.id,
+        filePath,
+        scanType,
+        config: {
+          enableStatic: scanConfig.enable_static,
+          enableRuntime: scanConfig.enable_runtime,
+          enableNetwork: scanConfig.enable_network,
+          enableDataFlow: scanConfig.enable_data_flow,
+          enableLLM: scanConfig.enable_llm,
+          runtimeTimeoutSeconds: scanConfig.runtime_timeout_seconds,
+          maxFileSizeMb: scanConfig.max_file_size_mb,
+          rulesets: scanConfig.rulesets,
+        },
+      };
+
+      await addScanJob(jobData);
+
+      return reply.code(202).send({
+        scan_id: scan.id,
+        extension_id: extension.id,
+        status: 'pending',
+        message: 'Chrome Web Store scan queued successfully',
+      });
+    } catch (error) {
+      logger_.error({ error }, 'CWS scan endpoint error');
       return reply.code(500).send({ error: 'Internal server error' });
     }
   });
