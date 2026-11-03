@@ -163,23 +163,27 @@ async function start() {
     logger.info(`Server listening on ${config.HOST}:${config.PORT}`);
     logger.info(`Health check: http://${config.HOST}:${config.PORT}/health`);
 
-    try {
-      if (redis.status === 'wait') {
+    if (config.REDIS_URL && config.REDIS_URL !== 'none' && config.REDIS_URL.trim() !== '') {
+      try {
+        if (redis.status === 'wait') {
+          await Promise.race([
+            redis.connect(),
+            new Promise((_, reject) => setTimeout(() => reject(new Error('Redis connect timeout')), 4000)),
+          ]);
+        }
         await Promise.race([
-          redis.connect(),
-          new Promise((_, reject) => setTimeout(() => reject(new Error('Redis connect timeout')), 4000)),
+          redis.ping(),
+          new Promise((_, reject) => setTimeout(() => reject(new Error('Redis ping timeout')), 4000)),
         ]);
+        logger.info('Redis connected — background worker queue active');
+        scanWorker = createScanWorker(async (job: Job<ScanJobData>) => {
+          await processScanJob(job.data);
+        });
+      } catch (redisErr) {
+        logger.warn({ err: (redisErr as Error)?.message || redisErr }, 'Redis unavailable — running in direct in-process scan mode');
       }
-      await Promise.race([
-        redis.ping(),
-        new Promise((_, reject) => setTimeout(() => reject(new Error('Redis ping timeout')), 4000)),
-      ]);
-      logger.info('Redis connected — background worker queue active');
-      scanWorker = createScanWorker(async (job: Job<ScanJobData>) => {
-        await processScanJob(job.data);
-      });
-    } catch (redisErr) {
-      logger.warn({ err: (redisErr as Error)?.message || redisErr }, 'Redis unavailable — running in direct in-process scan mode');
+    } else {
+      logger.info('Redis disabled/unconfigured — running with built-in in-process scan worker');
     }
   } catch (err) {
     logger.fatal({ err }, 'Failed to start server');

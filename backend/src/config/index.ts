@@ -5,7 +5,7 @@ const envSchema = z.object({
   PORT: z.coerce.number().default(3001),
   HOST: z.string().default('0.0.0.0'),
   DATABASE_URL: z.string().default('postgresql://postgres:postgres@localhost:5432/extension_guard?schema=public'),
-  REDIS_URL: z.string().url().default('redis://localhost:6379'),
+  REDIS_URL: z.string().optional().default(''),
   JWT_SECRET: z.string().min(1).default('dev-secret-not-for-production'),
   JWT_EXPIRES_IN: z.string().default('7d'),
   UPLOAD_MAX_SIZE: z.coerce.number().default(50 * 1024 * 1024),

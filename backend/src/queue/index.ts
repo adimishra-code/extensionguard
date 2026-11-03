@@ -3,7 +3,7 @@ import IORedis from 'ioredis';
 import { config } from '../config';
 import { logger } from '../utils/logger';
 
-export const redis = new IORedis(config.REDIS_URL, {
+export const redis = new IORedis(config.REDIS_URL || 'redis://localhost:6379', {
   maxRetriesPerRequest: null,
   enableReadyCheck: true,
   lazyConnect: true,
