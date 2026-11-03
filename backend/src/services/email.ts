@@ -11,19 +11,36 @@ class EmailService {
   }
 
   private init() {
-    if (config.SMTP_HOST && config.SMTP_USER && config.SMTP_PASS) {
+    const isGmail = config.SMTP_SERVICE === 'gmail' ||
+      config.SMTP_HOST?.toLowerCase().includes('gmail') ||
+      (config.SMTP_USER?.toLowerCase().endsWith('@gmail.com') && !config.SMTP_HOST);
+
+    const hasCreds = config.SMTP_USER && config.SMTP_PASS && (config.SMTP_HOST || isGmail);
+
+    if (hasCreds) {
       try {
-        this.transporter = nodemailer.createTransport({
-          host: config.SMTP_HOST,
-          port: config.SMTP_PORT,
-          secure: config.SMTP_SECURE,
+        const transportOpts: any = {
           auth: {
             user: config.SMTP_USER,
             pass: config.SMTP_PASS,
           },
-        });
+        };
+
+        if (isGmail) {
+          transportOpts.service = 'gmail';
+        } else {
+          transportOpts.host = config.SMTP_HOST;
+          transportOpts.port = config.SMTP_PORT || 587;
+          transportOpts.secure = config.SMTP_SECURE || config.SMTP_PORT === 465;
+        }
+
+        this.transporter = nodemailer.createTransport(transportOpts);
         this.isConfigured = true;
-        logger.info({ host: config.SMTP_HOST, user: config.SMTP_USER }, 'SMTP Email service configured');
+        logger.info({
+          mode: isGmail ? 'gmail-service' : 'custom-smtp',
+          host: isGmail ? 'smtp.gmail.com' : config.SMTP_HOST,
+          user: config.SMTP_USER
+        }, 'SMTP Email service initialized and ready');
       } catch (err) {
         logger.error({ err }, 'Failed to initialize SMTP transporter');
         this.isConfigured = false;

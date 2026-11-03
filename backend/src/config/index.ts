@@ -23,6 +23,7 @@ const envSchema = z.object({
   ANTHROPIC_API_KEY: z.string().optional(),
   LLM_PROVIDER: z.enum(['gemini', 'openai', 'openrouter', 'anthropic', 'heuristic']).default('heuristic'),
   LLM_MODEL: z.string().default('gemini-1.5-flash'),
+  SMTP_SERVICE: z.string().optional(),
   SMTP_HOST: z.string().optional(),
   SMTP_PORT: z.coerce.number().optional().default(587),
   SMTP_USER: z.string().optional(),
