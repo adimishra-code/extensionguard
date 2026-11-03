@@ -125,17 +125,19 @@ model Finding {
 }
 
 model Evidence {
-  id          String   @id @default(cuid())
+  id          String     @id @default(cuid())
   scan_id     String
-  scan        Scan     @relation(fields: [scan_id], references: [id], onDelete: Cascade)
+  scan        Scan       @relation(fields: [scan_id], references: [id], onDelete: Cascade)
+  ref         String?
   type        String
   source      String
   description String
   raw_data    Json
   confidence  Confidence
-  created_at  DateTime @default(now())
+  created_at  DateTime   @default(now())
 
   @@index([scan_id])
+  @@index([scan_id, ref])
   @@index([type])
 }
 

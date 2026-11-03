@@ -24,8 +24,9 @@ export class LLMAnalyzerService {
 
     if (openrouterKey) {
       try {
-        const result = await this.analyzeWithOpenRouter(input, openrouterKey);
-        if (result) {
+        const raw = await this.analyzeWithOpenRouter(input, openrouterKey);
+        if (raw) {
+          const result = this.sanitizeOutput(raw);
           logger_.info('Completed analysis with OpenRouter');
           return {
             output: result,
@@ -41,8 +42,9 @@ export class LLMAnalyzerService {
 
     if (geminiKey) {
       try {
-        const result = await this.analyzeWithGemini(input, geminiKey);
-        if (result) {
+        const raw = await this.analyzeWithGemini(input, geminiKey);
+        if (raw) {
+          const result = this.sanitizeOutput(raw);
           logger_.info('Completed analysis with Gemini');
           return {
             output: result,
@@ -58,8 +60,9 @@ export class LLMAnalyzerService {
 
     if (openaiKey) {
       try {
-        const result = await this.analyzeWithOpenAI(input, openaiKey);
-        if (result) {
+        const raw = await this.analyzeWithOpenAI(input, openaiKey);
+        if (raw) {
+          const result = this.sanitizeOutput(raw);
           logger_.info('Completed analysis with OpenAI');
           return {
             output: result,
@@ -75,7 +78,7 @@ export class LLMAnalyzerService {
 
     // High-accuracy Semantic Heuristic Reasoner
     logger_.info('Executing semantic security reasoning heuristic engine');
-    const heuristicResult = this.analyzeWithHeuristics(input);
+    const heuristicResult = this.sanitizeOutput(this.analyzeWithHeuristics(input));
     return {
       output: heuristicResult,
       provider: 'semantic-heuristic-v1',
@@ -329,6 +332,46 @@ export class LLMAnalyzerService {
     };
   }
 
+  public sanitizeOutput(raw: LLMAnalysisOutput): LLMAnalysisOutput {
+    const isNegation = (text: string) =>
+      /no\s+(discrepanc|mismatch|issue|inconsisten|deviation|concern)|none\s+found|aligned|consistent\s+with|within\s+expected|no\s+anomal/i.test(text || '');
+
+    const filteredMismatches = (raw.behavioral_mismatch || [])
+      .map(m => typeof m === 'string' ? { description: m, evidence_ids: [] } : m)
+      .filter(m => {
+        const desc = m.description || '';
+        return desc.trim().length > 0 && !isNegation(desc);
+      });
+
+    // Confidence for automated LLM heuristics should never be 'confirmed' — cap at 'likely'
+    let conf = raw.risk_assessment?.confidence || 'likely';
+    if (conf === ('confirmed' as any)) {
+      conf = 'likely';
+    }
+
+    let sev = raw.risk_assessment?.severity || 'low';
+    // If no discrepancies and no key findings exist, ensure severity is strictly low
+    if (filteredMismatches.length === 0 && (!raw.key_findings || raw.key_findings.length === 0)) {
+      sev = 'low';
+    }
+
+    return {
+      summary: raw.summary || 'Security analysis complete.',
+      risk_assessment: {
+        severity: sev,
+        confidence: conf,
+      },
+      key_findings: (raw.key_findings || []).map(f => ({
+        ...f,
+        severity: f.severity || 'low',
+        evidence_ids: f.evidence_ids || [],
+      })),
+      behavioral_mismatch: filteredMismatches,
+      recommended_actions: raw.recommended_actions || [],
+      uncertainties: raw.uncertainties || [],
+    };
+  }
+
   public calculateMismatchScore(output: LLMAnalysisOutput): number {
     const count = output.behavioral_mismatch.length;
     if (count === 0) return 0;
@@ -358,12 +401,17 @@ ${JSON.stringify(input.code_findings.slice(0, 20).map(c => ({ api: c.api, catego
 RUNTIME NETWORK EVENTS:
 ${JSON.stringify(input.runtime_events.slice(0, 15).map(e => ({ domain: e.domain, method: e.method, risk: e.risk_level })), null, 2)}
 
+CRITICAL INSTRUCTION FOR "behavioral_mismatch":
+- If there are genuine security discrepancies between declared purpose and observed actions, list them in "behavioral_mismatch".
+- If NO discrepancies are found, you MUST return an empty array: "behavioral_mismatch": [].
+- NEVER write phrases like "No discrepancies found" inside the array.
+
 Return a JSON object conforming strictly to this structure:
 {
   "summary": "2-3 sentences plain-English security summary",
   "risk_assessment": {
     "severity": "low" | "medium" | "high" | "critical",
-    "confidence": "confirmed" | "likely" | "potential"
+    "confidence": "likely" | "potential"
   },
   "key_findings": [
     { "claim": "Finding title", "evidence_ids": [], "severity": "low" | "medium" | "high" | "critical" }

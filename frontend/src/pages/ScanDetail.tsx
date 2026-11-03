@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { 
-  Shield, AlertTriangle, CheckCircle, FileText, Globe, Code, 
+  Shield, ShieldAlert, AlertTriangle, CheckCircle, FileText, Globe, Code, 
   Database, RefreshCw, Download, ArrowLeft, ExternalLink, Terminal, AlertCircle, Trash2, Sparkles, GitFork, ArrowRight
 } from 'lucide-react';
 import { scansApi } from '../lib/api';
@@ -57,11 +57,20 @@ export function ScanDetail() {
     );
   }
 
+  const isFailed = scan.status === 'failed';
   const overallScore = scan.risk_scores?.overall_score ?? 0;
   const overallSeverity: Severity = 
+    isFailed ? 'critical' :
     overallScore >= 70 ? 'critical' :
     overallScore >= 50 ? 'high' :
     overallScore >= 30 ? 'medium' : 'low';
+
+  const formatBytes = (bytes?: number | null) => {
+    if (!bytes || bytes === 0) return '—';
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
+  };
 
   const filteredFindings = (scan.findings || []).filter(f => 
     selectedSeverity === 'all' ? true : f.severity === selectedSeverity
@@ -125,24 +134,48 @@ export function ScanDetail() {
         </div>
       </div>
 
+      {/* Prominent Scan Failed Error Alert */}
+      {isFailed && (
+        <div className="card p-5 border-l-4 border-l-danger-600 bg-danger-50/60 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+          <div className="flex items-start gap-3">
+            <AlertTriangle className="h-6 w-6 text-danger-600 flex-shrink-0 mt-0.5" />
+            <div className="space-y-1">
+              <h3 className="font-bold text-sm text-danger-900">Scan Execution Failed — No Result Available</h3>
+              <p className="text-xs text-danger-700 leading-relaxed font-mono">
+                {scan.error || 'The analysis pipeline crashed before completing. Risk was not scored and results were not finalized.'}
+              </p>
+            </div>
+          </div>
+          <Link
+            to="/scan"
+            className="btn-danger text-xs py-2 px-3.5 flex items-center gap-1.5 flex-shrink-0 font-medium"
+          >
+            <RefreshCw className="h-3.5 w-3.5" /> Start New Scan
+          </Link>
+        </div>
+      )}
+
       {/* Overview Status Banner */}
       <div className="grid gap-4 md:grid-cols-4">
         <div className="card p-6 bg-white flex items-center gap-4">
           <div className={cn(
             "p-3 rounded-2xl flex items-center justify-center text-white",
+            isFailed ? 'bg-danger-600' :
             overallSeverity === 'critical' || overallSeverity === 'high' ? 'bg-danger-600' :
             overallSeverity === 'medium' ? 'bg-warning-500' : 'bg-success-600'
           )}>
-            <Shield className="h-8 w-8" />
+            {isFailed ? <ShieldAlert className="h-8 w-8" /> : <Shield className="h-8 w-8" />}
           </div>
           <div>
             <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Overall Risk Score</p>
             <div className="flex items-baseline gap-2 mt-1">
-              <span className="text-3xl font-extrabold text-gray-900">{overallScore}</span>
+              <span className="text-3xl font-extrabold text-gray-900">
+                {isFailed ? '—' : overallScore}
+              </span>
               <span className="text-sm text-gray-500">/ 100</span>
             </div>
-            <span className={cn('badge mt-1', getSeverityBadge(overallSeverity))}>
-              {overallSeverity.toUpperCase()} RISK
+            <span className={cn('badge mt-1', isFailed ? 'bg-danger-100 text-danger-800' : getSeverityBadge(overallSeverity))}>
+              {isFailed ? 'SCAN FAILED' : `${overallSeverity.toUpperCase()} RISK`}
             </span>
           </div>
         </div>
@@ -269,21 +302,23 @@ export function ScanDetail() {
                   <Sparkles className="h-5 w-5 text-primary-600" />
                   <h3 className="font-semibold text-gray-900 text-sm">AI Security Assessment</h3>
                 </div>
-                <span className="badge bg-primary-100 text-primary-800 text-[10px] font-mono">
-                  {scan.llm_model || 'active'}
+                <span className={cn("badge text-[10px] font-mono", isFailed ? "bg-red-100 text-red-800" : "bg-primary-100 text-primary-800")}>
+                  {isFailed ? 'failed' : (scan.llm_model || 'semantic-engine')}
                 </span>
               </div>
               <p className="text-xs text-gray-600 leading-relaxed">
-                {scan.findings?.find(f => f.category === 'purpose_mismatch')?.description ||
-                  `Automated semantic evaluation verified that requested permissions and code patterns correspond to declared functionality.`}
+                {isFailed
+                  ? 'AI security evaluation could not run because the scan encountered an error during execution.'
+                  : (scan.findings?.find(f => f.category === 'purpose_mismatch')?.description ||
+                    'Automated semantic evaluation verified that requested permissions and code patterns correspond to declared functionality.')}
               </p>
-              {scan.findings?.some(f => f.category === 'purpose_mismatch') && (
+              {!isFailed && scan.findings?.some(f => f.category === 'purpose_mismatch' && (f.severity === 'medium' || f.severity === 'high' || f.severity === 'critical')) && (
                 <div className="p-2.5 bg-danger-50 border border-danger-200 rounded-lg text-xs text-danger-800 space-y-1">
                   <p className="font-bold flex items-center gap-1.5">
                     <AlertTriangle className="h-3.5 w-3.5 text-danger-600" /> Disproportionate Permission Request
                   </p>
                   <p className="text-[11px] text-danger-700 leading-normal">
-                    This extension requests capabilities beyond what is justifiable for its declared utility function.
+                    {scan.findings.find(f => f.category === 'purpose_mismatch')?.description || 'This extension requests capabilities beyond what is justifiable for its declared utility function.'}
                   </p>
                 </div>
               )}
@@ -303,7 +338,7 @@ export function ScanDetail() {
                 <div className="flex justify-between py-1 border-b border-gray-100">
                   <dt className="text-gray-500">Package Size</dt>
                   <dd className="font-medium text-gray-900">
-                    {scan.extension?.size_bytes ? (scan.extension.size_bytes / 1024 / 1024).toFixed(2) + ' MB' : '—'}
+                    {formatBytes(scan.extension?.size_bytes)}
                   </dd>
                 </div>
                 <div className="flex justify-between py-1 border-b border-gray-100">
@@ -328,6 +363,15 @@ export function ScanDetail() {
                 <li className="flex items-center gap-2"><CheckCircle className="h-3.5 w-3.5 text-success-600" /> Obfuscation & anti-analysis heuristics</li>
                 <li className="flex items-center gap-2"><CheckCircle className="h-3.5 w-3.5 text-success-600" /> Suspicious domain / IP extraction</li>
               </ul>
+            </div>
+          </div>
+
+          <div className="md:col-span-3 p-4 rounded-xl bg-gray-50 border border-gray-200 flex items-center justify-between text-xs text-gray-500">
+            <div className="flex items-center gap-2">
+              <ShieldAlert className="h-4 w-4 text-gray-400 flex-shrink-0" />
+              <span>
+                <strong>ExtensionGuard Beta:</strong> Automated static code analysis and behavioral heuristics. "Low Risk" indicates no security anomalies were flagged by active detectors; it is not a commercial safety guarantee.
+              </span>
             </div>
           </div>
         </div>

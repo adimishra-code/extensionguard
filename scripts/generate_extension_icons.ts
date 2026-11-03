@@ -142,3 +142,4 @@ for (const size of sizes) {
 }
 
 console.log('All icons generated successfully!');
+

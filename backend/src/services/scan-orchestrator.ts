@@ -271,11 +271,36 @@ export async function processScanJob(jobData: ScanJobData): Promise<void> {
       });
     }
 
-    const allEvidence: Evidence[] = [
+    const idMap = new Map<string, string>();
+    const seenIds = new Set<string>();
+
+    const rawEvidences = [
       ...manifestAnalysis.evidences,
       ...staticAnalysis.evidences,
       ...sandboxAnalysis.evidences,
     ];
+
+    const allEvidence: Evidence[] = [];
+    let evidenceIndex = 1;
+
+    for (const ev of rawEvidences) {
+      const origId = ev.id;
+      let finalId = origId;
+      // If missing, duplicate, or non-UUID format (like old E-prefix), generate a fresh unique UUID
+      if (!finalId || seenIds.has(finalId) || finalId.startsWith('E-') || !finalId.includes('-')) {
+        finalId = uuidv4();
+        if (origId) idMap.set(origId, finalId);
+      }
+      seenIds.add(finalId);
+
+      const ref = ev.ref || `E-${scanId.slice(0, 8)}-${String(evidenceIndex++).padStart(3, '0')}`;
+      allEvidence.push({
+        ...ev,
+        id: finalId,
+        ref,
+        scan_id: scanId,
+      });
+    }
 
     const findings: Finding[] = [];
 
@@ -294,7 +319,7 @@ export async function processScanJob(jobData: ScanJobData): Promise<void> {
             ? 'Consider removing this permission if not needed.'
             : 'Verify this permission is necessary for extension functionality.',
           limitations: 'Permission declaration alone does not confirm malicious use. Code correlation needed.',
-          evidence_ids: pr.evidence_ids,
+          evidence_ids: (pr.evidence_ids || []).map(id => idMap.get(id) || id),
           affected_api: pr.permission,
           created_at: new Date().toISOString(),
         });
@@ -335,7 +360,7 @@ export async function processScanJob(jobData: ScanJobData): Promise<void> {
           technical_details: `Content script modified web page DOM during execution. Raw data: ${JSON.stringify(ev.raw_data)}`,
           recommendation: 'Audit content script selectors and ensure DOM modifications are authorized.',
           limitations: 'Observed dynamically in isolated headless Chromium sandbox.',
-          evidence_ids: [ev.id],
+          evidence_ids: [idMap.get(ev.id) || ev.id],
           created_at: new Date().toISOString(),
         });
       }
@@ -354,7 +379,7 @@ export async function processScanJob(jobData: ScanJobData): Promise<void> {
           technical_details: `Dynamic request method ${net.method} to ${net.url}. Size: ${net.request_size} bytes.`,
           recommendation: 'Verify if this outbound third-party domain is an authorized endpoint.',
           limitations: 'Dynamic network capture during simulated runtime interaction.',
-          evidence_ids: [net.id],
+          evidence_ids: [idMap.get(net.id) || net.id],
           affected_api: net.domain,
           created_at: new Date().toISOString(),
         });
@@ -425,7 +450,7 @@ export async function processScanJob(jobData: ScanJobData): Promise<void> {
       risk_level: pr.risk_level,
       reason: pr.reason,
       used_in_code: pr.used_in_code,
-      evidence_ids: pr.evidence_ids,
+      evidence_ids: (pr.evidence_ids || []).map(id => idMap.get(id) || id),
     }));
 
     // Run LLM Security Assessment if enabled or full/deep scan
@@ -453,22 +478,24 @@ export async function processScanJob(jobData: ScanJobData): Promise<void> {
         llmInfo = { model: llmResult.model, provider: llmResult.provider };
         purposeMismatchScore = llmResult.purposeMismatchScore;
 
-        // Add any behavioral mismatches to findings
-        for (const mismatch of llmResult.output.behavioral_mismatch) {
-          findings.push({
-            id: uuidv4(),
-            scan_id: scanId,
-            category: 'purpose_mismatch',
-            severity: llmResult.output.risk_assessment.severity,
-            confidence: llmResult.output.risk_assessment.confidence,
-            title: 'Behavioral Purpose Mismatch',
-            description: mismatch.description,
-            technical_details: `Semantic LLM audit discovered discrepancy between stated purpose and observed code/permissions: ${mismatch.description}`,
-            recommendation: llmResult.output.recommended_actions[0] || 'Review declared extension permissions.',
-            limitations: llmResult.output.uncertainties.join('; ') || 'Semantic analysis heuristic.',
-            evidence_ids: mismatch.evidence_ids,
-            created_at: new Date().toISOString(),
-          });
+        // Add any genuine behavioral mismatches to findings
+        if (llmResult.output.behavioral_mismatch && llmResult.output.behavioral_mismatch.length > 0) {
+          for (const mismatch of llmResult.output.behavioral_mismatch) {
+            findings.push({
+              id: uuidv4(),
+              scan_id: scanId,
+              category: 'purpose_mismatch',
+              severity: llmResult.output.risk_assessment.severity === 'low' ? 'medium' : llmResult.output.risk_assessment.severity,
+              confidence: llmResult.output.risk_assessment.confidence,
+              title: 'Behavioral Purpose Mismatch',
+              description: mismatch.description,
+              technical_details: `Semantic LLM audit discovered discrepancy between stated purpose and observed code/permissions: ${mismatch.description}`,
+              recommendation: llmResult.output.recommended_actions[0] || 'Review declared extension permissions.',
+              limitations: llmResult.output.uncertainties.join('; ') || 'Semantic analysis heuristic.',
+              evidence_ids: (mismatch.evidence_ids || []).map(id => idMap.get(id) || id),
+              created_at: new Date().toISOString(),
+            });
+          }
         }
       } catch (llmErr) {
         logger_.warn({ llmErr }, 'LLM analysis skipped or failed');

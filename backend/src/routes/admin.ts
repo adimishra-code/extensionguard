@@ -225,3 +225,4 @@ export async function adminRoutes(fastify: FastifyInstance) {
     }
   });
 }
+

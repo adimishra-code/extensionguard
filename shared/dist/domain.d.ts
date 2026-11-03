@@ -104,6 +104,7 @@ export interface Finding {
 export interface Evidence {
     id: string;
     scan_id: string;
+    ref?: string;
     type: 'manifest' | 'static_analysis' | 'runtime' | 'network' | 'data_flow' | 'dependency' | 'policy';
     source: string;
     description: string;

@@ -142,6 +142,23 @@ async function start() {
     await connectDatabase();
     registerInProcessExecutor(processScanJob);
 
+    // Reconcile any orphaned in-flight scans from prior process or Redis crash
+    try {
+      const orphaned = await prisma.scan.updateMany({
+        where: { status: { in: ['running', 'pending'] } },
+        data: {
+          status: 'failed',
+          completed_at: new Date(),
+          error: 'Scan interrupted by server restart or container reallocation',
+        },
+      });
+      if (orphaned.count > 0) {
+        logger.info({ count: orphaned.count }, 'Reconciled orphaned in-flight scans on startup');
+      }
+    } catch (reconcileErr) {
+      logger.warn({ err: reconcileErr }, 'Orphaned scan reconciliation skipped');
+    }
+
     await fastify.listen({ port: config.PORT, host: config.HOST });
     logger.info(`Server listening on ${config.HOST}:${config.PORT}`);
     logger.info(`Health check: http://${config.HOST}:${config.PORT}/health`);

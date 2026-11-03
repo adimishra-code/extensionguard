@@ -1,4 +1,5 @@
 import { NetworkEvent, Evidence, Severity } from '@extension-guard/shared';
+import { v4 as uuidv4 } from 'uuid';
 import { logger } from '../utils/logger';
 import { chromium, Browser, BrowserContext } from 'playwright';
 import { rmSync, existsSync } from 'fs';
@@ -84,12 +85,12 @@ export async function analyzeSandbox(
   
   let evidenceCounter = 0;
   function nextEvidenceId() {
-    return `E-${scanId.slice(0, 8)}-${(++evidenceCounter).toString().padStart(3, '0')}`;
+    return uuidv4();
   }
   
   let networkCounter = 0;
   function nextNetworkId() {
-    return `N-${scanId.slice(0, 8)}-${(++networkCounter).toString().padStart(3, '0')}`;
+    return uuidv4();
   }
   
   const _timeoutMs = (options.timeoutSeconds || 120) * 1000;

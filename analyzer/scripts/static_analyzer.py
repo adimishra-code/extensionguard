@@ -4,6 +4,7 @@ import sys
 import ast
 import re
 import datetime
+import uuid
 from pathlib import Path
 
 def get_iso_timestamp():
@@ -44,12 +45,8 @@ CUSTOM_RULES = load_custom_rules()
 def analyze_file(filepath, scan_id):
     findings = []
     evidence = []
-    evidence_counter = 0
-    
     def next_eid():
-        nonlocal evidence_counter
-        evidence_counter += 1
-        return f"E-{scan_id[:8]}-{evidence_counter:03d}"
+        return str(uuid.uuid4())
     
     try:
         with open(filepath, 'r', encoding='utf-8', errors='ignore') as f:
@@ -333,7 +330,7 @@ def main():
     for root, dirs, files in os.walk(extension_path):
         dirs[:] = [d for d in dirs if d not in ('.git', 'node_modules', '__pycache__', '.venv', 'dist', 'build')]
         for file in files:
-            if file.endswith(('.js', '.ts', '.jsx', '.tsx', '.mjs', '.cjs')):
+            if file.endswith(('.js', '.ts', '.jsx', '.tsx', '.mjs', '.cjs', '.html', '.htm')):
                 filepath = os.path.join(root, file)
                 rel_path = os.path.relpath(filepath, extension_path).replace('\\', '/')
                 try:

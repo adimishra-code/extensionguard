@@ -1,4 +1,5 @@
 import { createHash } from 'crypto';
+import { v4 as uuidv4 } from 'uuid';
 import { ExtensionManifest, PermissionRisk, Severity, Evidence } from '@extension-guard/shared';
 import { logger } from '../utils/logger';
 
@@ -124,7 +125,7 @@ export async function analyzeManifest(
   let evidenceCounter = 0;
 
   function nextEvidenceId() {
-    return `E-${scanId.slice(0, 8)}-${(++evidenceCounter).toString().padStart(3, '0')}`;
+    return uuidv4();
   }
 
   try {
