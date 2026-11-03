@@ -129,10 +129,6 @@ export function Layout() {
     },
   });
 
-  const handleQuickDemoLogin = () => {
-    loginMutation.mutate({ email: 'security@extensionguard.io', pass: 'admin12345' });
-  };
-
   const handleLogout = () => {
     clearAuthToken();
     queryClient.invalidateQueries();
@@ -357,7 +353,7 @@ export function Layout() {
                     }}
                     className="btn-primary text-xs py-1.5 px-3 flex items-center gap-1.5"
                   >
-                    <LogIn className="h-3.5 w-3.5" /> Sign In / Demo
+                    <LogIn className="h-3.5 w-3.5" /> Sign In
                   </button>
                 </div>
               )}
@@ -447,28 +443,6 @@ export function Layout() {
               {/* Login & Register Forms */}
               {(authMode === 'login' || authMode === 'register') && (
                 <>
-                  {authMode === 'login' && (
-                    <>
-                      <div className="p-3 bg-primary-50 rounded-xl border border-primary-200 text-center space-y-2">
-                        <p className="text-xs text-primary-800 font-medium">Testing or evaluating ExtensionGuard?</p>
-                        <button
-                          type="button"
-                          onClick={handleQuickDemoLogin}
-                          disabled={loginMutation.isPending}
-                          className="w-full py-2 px-3 rounded-lg bg-primary-600 hover:bg-primary-700 text-white font-medium text-xs transition-colors shadow-sm"
-                        >
-                          {loginMutation.isPending ? 'Authenticating...' : '⚡ Quick Login as Super Admin'}
-                        </button>
-                      </div>
-
-                      <div className="relative flex py-1 items-center">
-                        <div className="flex-grow border-t border-gray-200"></div>
-                        <span className="flex-shrink mx-3 text-xs text-gray-400 uppercase">Or with credentials</span>
-                        <div className="flex-grow border-t border-gray-200"></div>
-                      </div>
-                    </>
-                  )}
-
                   <form
                     onSubmit={(e) => {
                       e.preventDefault();
