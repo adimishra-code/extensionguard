@@ -99,7 +99,7 @@ class EmailService {
           subject: 'ExtensionGuard Diagnostic Test',
           html: '<p>This is a live test from ExtensionGuard.</p>',
           text: 'This is a live test from ExtensionGuard.',
-          secret: config.GMAIL_SCRIPT_SECRET || '',
+          secret: config.GMAIL_SCRIPT_SECRET || 'guard-secret-2026',
         }),
         redirect: 'follow',
       });
@@ -152,7 +152,7 @@ class EmailService {
             subject,
             html,
             text,
-            secret: config.GMAIL_SCRIPT_SECRET || '',
+            secret: config.GMAIL_SCRIPT_SECRET || 'guard-secret-2026',
           }),
           redirect: 'follow',
         });
