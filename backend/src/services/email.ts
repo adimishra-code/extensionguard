@@ -19,15 +19,22 @@ class EmailService {
 
     if (hasCreds) {
       try {
+        const cleanPass = isGmail && config.SMTP_PASS
+          ? config.SMTP_PASS.trim().replace(/^["']|["']$/g, '').replace(/\s+/g, '')
+          : (config.SMTP_PASS?.trim() || '');
+
         const transportOpts: any = {
           auth: {
-            user: config.SMTP_USER,
-            pass: config.SMTP_PASS,
+            user: config.SMTP_USER?.trim(),
+            pass: cleanPass,
           },
         };
 
         if (isGmail) {
           transportOpts.service = 'gmail';
+          transportOpts.tls = {
+            rejectUnauthorized: false,
+          };
         } else {
           transportOpts.host = config.SMTP_HOST;
           transportOpts.port = config.SMTP_PORT || 587;
