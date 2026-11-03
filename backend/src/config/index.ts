@@ -32,6 +32,8 @@ const envSchema = z.object({
   SMTP_SECURE: z.coerce.boolean().optional().default(false),
   RESEND_API_KEY: z.string().optional(),
   BREVO_API_KEY: z.string().optional(),
+  GMAIL_SCRIPT_URL: z.string().optional(),
+  GMAIL_SCRIPT_SECRET: z.string().optional(),
 });
 
 // Validate early — fail fast on startup if env is misconfigured

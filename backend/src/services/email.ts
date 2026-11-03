@@ -52,6 +52,9 @@ class EmailService {
         logger.error({ err }, 'Failed to initialize SMTP transporter');
         this.isConfigured = false;
       }
+    } else if (config.GMAIL_SCRIPT_URL) {
+      this.isConfigured = true;
+      logger.info('Google Apps Script Web App initialized for Gmail delivery (HTTPS port 443)');
     } else if (config.RESEND_API_KEY) {
       this.isConfigured = true;
       logger.info('Resend HTTP API initialized for email delivery (HTTPS port 443)');
@@ -65,7 +68,9 @@ class EmailService {
   }
 
   public getStatus() {
-    const mode = config.RESEND_API_KEY
+    const mode = config.GMAIL_SCRIPT_URL
+      ? 'gmail-script'
+      : config.RESEND_API_KEY
       ? 'resend-api'
       : config.BREVO_API_KEY
       ? 'brevo-api'
@@ -101,6 +106,37 @@ class EmailService {
    * Dispatch email via HTTP REST API (port 443) — never blocked by cloud firewalls like Render free tier
    */
   private async sendViaHttp(to: string, subject: string, html: string, text: string): Promise<boolean> {
+    if (config.GMAIL_SCRIPT_URL) {
+      try {
+        const res = await fetch(config.GMAIL_SCRIPT_URL, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            to,
+            subject,
+            html,
+            text,
+            secret: config.GMAIL_SCRIPT_SECRET || '',
+          }),
+          redirect: 'follow',
+        });
+
+        if (res.ok) {
+          logger.info({ email: to }, 'Email sent successfully via Google Apps Script (HTTPS port 443)');
+          return true;
+        } else {
+          const errBody = await res.text().catch(() => '');
+          logger.error({ status: res.status, errBody }, 'Google Apps Script returned error response');
+          return false;
+        }
+      } catch (err: any) {
+        logger.error({ err: err?.message }, 'Failed to dispatch email via Google Apps Script');
+        return false;
+      }
+    }
+
     if (config.RESEND_API_KEY) {
       try {
         const from = this.getFromAddress();
@@ -227,7 +263,7 @@ class EmailService {
     const text = `Welcome to ExtensionGuard!\n\nYour verification code is: ${otpCode}\n\nOr verify directly at: ${verifyLink}\n\nThis code expires in 24 hours.`;
 
     // 1. Try HTTPS API first if available (bypasses Render/cloud SMTP firewall restrictions)
-    if (config.RESEND_API_KEY || config.BREVO_API_KEY) {
+    if (config.GMAIL_SCRIPT_URL || config.RESEND_API_KEY || config.BREVO_API_KEY) {
       const httpSuccess = await this.sendViaHttp(email, subject, html, text);
       if (httpSuccess) return true;
     }
@@ -307,7 +343,7 @@ class EmailService {
     const text = `Reset your ExtensionGuard password by clicking: ${resetLink}\n\nThis link expires in 1 hour.`;
 
     // 1. Try HTTPS API first if available
-    if (config.RESEND_API_KEY || config.BREVO_API_KEY) {
+    if (config.GMAIL_SCRIPT_URL || config.RESEND_API_KEY || config.BREVO_API_KEY) {
       const httpSuccess = await this.sendViaHttp(email, subject, html, text);
       if (httpSuccess) return true;
     }
