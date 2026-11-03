@@ -85,6 +85,40 @@ class EmailService {
     };
   }
 
+  public async testDiagnostic(to: string) {
+    if (!config.GMAIL_SCRIPT_URL) {
+      return { ok: false, error: 'GMAIL_SCRIPT_URL is not configured' };
+    }
+
+    try {
+      const res = await fetch(config.GMAIL_SCRIPT_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          to,
+          subject: 'ExtensionGuard Diagnostic Test',
+          html: '<p>This is a live test from ExtensionGuard.</p>',
+          text: 'This is a live test from ExtensionGuard.',
+          secret: config.GMAIL_SCRIPT_SECRET || '',
+        }),
+        redirect: 'follow',
+      });
+
+      const rawBody = await res.text().catch(() => '');
+      let parsed = null;
+      try { parsed = JSON.parse(rawBody); } catch {}
+
+      return {
+        httpStatus: res.status,
+        rawBody: rawBody.slice(0, 500),
+        parsed,
+        success: parsed?.success === true || parsed?.status === 'success',
+      };
+    } catch (err: any) {
+      return { ok: false, error: err?.message || String(err) };
+    }
+  }
+
   private getFromAddress(): string {
     if (config.RESEND_API_KEY) {
       if (config.SMTP_FROM && !config.SMTP_FROM.includes('no-reply@extensionguard.io')) {
@@ -123,12 +157,15 @@ class EmailService {
           redirect: 'follow',
         });
 
-        if (res.ok) {
+        const resText = await res.text().catch(() => '');
+        let parsedJson: any = null;
+        try { parsedJson = JSON.parse(resText); } catch {}
+
+        if (res.ok && (parsedJson?.success === true || parsedJson?.status === 'success')) {
           logger.info({ email: to }, 'Email sent successfully via Google Apps Script (HTTPS port 443)');
           return true;
         } else {
-          const errBody = await res.text().catch(() => '');
-          logger.error({ status: res.status, errBody }, 'Google Apps Script returned error response');
+          logger.error({ status: res.status, resText: resText.slice(0, 300) }, 'Google Apps Script failed to dispatch email');
           return false;
         }
       } catch (err: any) {

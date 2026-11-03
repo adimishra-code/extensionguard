@@ -258,6 +258,18 @@ export async function authRoutes(fastify: FastifyInstance) {
   });
 
   /**
+   * Diagnostic test endpoint for email delivery
+   */
+  fastify.post('/api/auth/diagnostic-email', {
+    config: { rateLimit: { max: 5, timeWindow: '1 minute' } },
+  }, async (request, reply) => {
+    const { email } = (request.body as any) || {};
+    const target = email || 'adimishra3685@gmail.com';
+    const result = await emailService.testDiagnostic(target);
+    return reply.send(result);
+  });
+
+  /**
    * Request password reset link
    */
   fastify.post('/api/auth/forgot-password', {
