@@ -3,32 +3,52 @@ import IORedis from 'ioredis';
 import { config } from '../config';
 import { logger } from '../utils/logger';
 
-export const redis = new IORedis(config.REDIS_URL || 'redis://localhost:6379', {
-  maxRetriesPerRequest: null,
-  enableReadyCheck: true,
-  lazyConnect: true,
-});
+const isRedisConfigured = Boolean(
+  config.REDIS_URL &&
+  config.REDIS_URL.trim() !== '' &&
+  config.REDIS_URL !== 'none'
+);
 
-redis.on('error', (err) => {
-  logger.error({ err }, 'Redis connection error');
-});
+export const redis = isRedisConfigured
+  ? new IORedis(config.REDIS_URL, {
+      maxRetriesPerRequest: null,
+      enableReadyCheck: true,
+      lazyConnect: true,
+      retryStrategy: (times) => {
+        if (times > 2) {
+          return null; // Stop reconnecting after 2 attempts
+        }
+        return 1000;
+      },
+    })
+  : null;
 
-export const scanQueue = new Queue('scan', {
-  connection: redis,
-  defaultJobOptions: {
-    removeOnComplete: 100,
-    removeOnFail: 50,
-    attempts: 3,
-    backoff: {
-      type: 'exponential',
-      delay: 5000,
-    },
-  },
-});
+if (redis) {
+  redis.on('error', (err) => {
+    logger.warn({ err: (err as Error)?.message || err }, 'Redis connection warning');
+  });
+}
 
-scanQueue.on('error', (err) => {
-  logger.error({ err }, 'Scan queue error');
-});
+export const scanQueue = (isRedisConfigured && redis)
+  ? new Queue('scan', {
+      connection: redis,
+      defaultJobOptions: {
+        removeOnComplete: 100,
+        removeOnFail: 50,
+        attempts: 3,
+        backoff: {
+          type: 'exponential',
+          delay: 5000,
+        },
+      },
+    })
+  : null;
+
+if (scanQueue) {
+  scanQueue.on('error', (err) => {
+    logger.warn({ err: (err as Error)?.message || err }, 'Scan queue warning');
+  });
+}
 
 export interface ScanJobData {
   scanId: string;
@@ -54,7 +74,7 @@ export function registerInProcessExecutor(executor: (data: ScanJobData) => Promi
 }
 
 export async function addScanJob(data: ScanJobData) {
-  if (redis.status === 'ready') {
+  if (redis && scanQueue && redis.status === 'ready') {
     try {
       const job = await scanQueue.add('analyze', data, {
         jobId: data.scanId,
@@ -81,7 +101,7 @@ export async function addScanJob(data: ScanJobData) {
 }
 
 export async function getScanJobStatus(jobId: string) {
-  if (redis.status === 'ready') {
+  if (redis && scanQueue && redis.status === 'ready') {
     try {
       const job = await scanQueue.getJob(jobId);
       if (job) {
@@ -94,6 +114,7 @@ export async function getScanJobStatus(jobId: string) {
 }
 
 export function createScanWorker(processor: (job: Job<ScanJobData>) => Promise<void>) {
+  if (!redis) return null;
   const worker = new Worker<ScanJobData>('scan', processor, {
     connection: redis,
     concurrency: 2,

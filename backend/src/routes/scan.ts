@@ -579,9 +579,11 @@ export async function scanRoutes(fastify: FastifyInstance) {
 
     // Try to remove job from BullMQ queue if pending
     try {
-      const job = await scanQueue.getJob(scan.id);
-      if (job) {
-        await job.remove();
+      if (scanQueue) {
+        const job = await scanQueue.getJob(scan.id);
+        if (job) {
+          await job.remove();
+        }
       }
     } catch {}
 

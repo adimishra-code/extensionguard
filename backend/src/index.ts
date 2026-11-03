@@ -90,10 +90,10 @@ fastify.get('/health', async () => {
 
 fastify.get('/api/health', async () => {
   const dbStatus = await prisma.$queryRaw`SELECT 1`.then(() => 'connected').catch(() => 'disconnected');
-  const redisStatus = await redis.ping().then(() => 'connected').catch(() => 'disconnected');
+  const redisStatus = redis ? await redis.ping().then(() => 'connected').catch(() => 'disconnected') : 'disabled';
   
   return {
-    status: dbStatus === 'connected' && redisStatus === 'connected' ? 'healthy' : 'degraded',
+    status: dbStatus === 'connected' ? 'healthy' : 'degraded',
     timestamp: new Date().toISOString(),
     version: config.ANALYZER_VERSION,
     services: {
@@ -110,8 +110,8 @@ fastify.get('/api/health/detailed', async () => {
   const dbLatencyMs = Date.now() - dbStart;
 
   const redisStart = Date.now();
-  const redisStatus = await redis.ping().then(() => 'connected').catch(() => 'disconnected');
-  const redisLatencyMs = Date.now() - redisStart;
+  const redisStatus = redis ? await redis.ping().then(() => 'connected').catch(() => 'disconnected') : 'disabled';
+  const redisLatencyMs = redis ? Date.now() - redisStart : 0;
 
   const [scanCount, extCount] = await Promise.all([
     prisma.scan.count().catch(() => 0),
@@ -119,7 +119,7 @@ fastify.get('/api/health/detailed', async () => {
   ]);
 
   return {
-    status: dbStatus === 'connected' && redisStatus === 'connected' ? 'healthy' : 'degraded',
+    status: dbStatus === 'connected' ? 'healthy' : 'degraded',
     timestamp: new Date().toISOString(),
     version: config.ANALYZER_VERSION,
     environment: config.NODE_ENV,
@@ -163,17 +163,17 @@ async function start() {
     logger.info(`Server listening on ${config.HOST}:${config.PORT}`);
     logger.info(`Health check: http://${config.HOST}:${config.PORT}/health`);
 
-    if (config.REDIS_URL && config.REDIS_URL !== 'none' && config.REDIS_URL.trim() !== '') {
+    if (redis && config.REDIS_URL && config.REDIS_URL !== 'none' && config.REDIS_URL.trim() !== '') {
       try {
         if (redis.status === 'wait') {
           await Promise.race([
             redis.connect(),
-            new Promise((_, reject) => setTimeout(() => reject(new Error('Redis connect timeout')), 4000)),
+            new Promise((_, reject) => setTimeout(() => reject(new Error('Redis connect timeout')), 3000)),
           ]);
         }
         await Promise.race([
           redis.ping(),
-          new Promise((_, reject) => setTimeout(() => reject(new Error('Redis ping timeout')), 4000)),
+          new Promise((_, reject) => setTimeout(() => reject(new Error('Redis ping timeout')), 3000)),
         ]);
         logger.info('Redis connected — background worker queue active');
         scanWorker = createScanWorker(async (job: Job<ScanJobData>) => {
@@ -197,8 +197,12 @@ async function shutdown() {
     await scanWorker.close();
   }
   await fastify.close();
-  await scanQueue.close();
-  await redis.quit().catch(() => {});
+  if (scanQueue) {
+    await scanQueue.close().catch(() => {});
+  }
+  if (redis) {
+    await redis.quit().catch(() => {});
+  }
   await disconnectDatabase();
   process.exit(0);
 }
