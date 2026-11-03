@@ -6,6 +6,7 @@ import { rmSync, existsSync } from 'fs';
 import * as path from 'path';
 import { tmpdir } from 'os';
 import AdmZip from 'adm-zip';
+import { validateZipSecurity } from '../utils/zip-security';
 
 export interface SandboxAnalysisResult {
   networkEvents: NetworkEvent[];
@@ -59,6 +60,37 @@ function isSyntheticDomain(domain: string): boolean {
   return Object.keys(SYNTHETIC_SITES).includes(domain);
 }
 
+function isInternalOrForbiddenHost(hostname: string): boolean {
+  if (!hostname) return true;
+  const h = hostname.toLowerCase().trim();
+
+  if (
+    h === 'localhost' ||
+    h === '127.0.0.1' ||
+    h === '0.0.0.0' ||
+    h === '::1' ||
+    h === '169.254.169.254' ||
+    (h.endsWith('.local') && !isSyntheticDomain(h)) ||
+    h.endsWith('.internal') ||
+    h.endsWith('.lan')
+  ) {
+    return true;
+  }
+
+  // Check IPv4 ranges: 127.0.0.0/8, 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 169.254.0.0/16
+  const parts = h.split('.').map(p => Number(p));
+  if (parts.length === 4 && parts.every(p => !isNaN(p) && p >= 0 && p <= 255)) {
+    const a = parts[0]!;
+    const b = parts[1]!;
+    if (a === 127 || a === 10 || a === 0) return true;
+    if (a === 172 && b >= 16 && b <= 31) return true;
+    if (a === 192 && b === 168) return true;
+    if (a === 169 && b === 254) return true;
+  }
+
+  return false;
+}
+
 function getSyntheticSiteInfo(domain: string): { category: string; risk: Severity } | null {
   const siteMap: Record<string, { category: string; risk: Severity }> = {
     'fake-mail.local': { category: 'email', risk: 'high' },
@@ -107,8 +139,9 @@ export async function analyzeSandbox(
       rmSync(tempDir, { recursive: true, force: true });
     }
     
-    // Unzip extension
+    // Unzip extension with path traversal verification
     const zip = new AdmZip(extensionPath);
+    validateZipSecurity(zip);
     zip.extractAllTo(tempDir, true);
     
     // Launch browser with extension loaded
@@ -132,10 +165,16 @@ export async function analyzeSandbox(
       bypassCSP: true
     });
     
-    // Register route handler to serve synthetic sites
+    // Register route handler to isolate extension and serve synthetic sites
     await context.route('**/*', async (route, request) => {
       const url = request.url();
       try {
+        // Internal chrome / extension schemes
+        if (url.startsWith('chrome-extension://') || url.startsWith('chrome://') || url.startsWith('data:') || url.startsWith('blob:')) {
+          await route.continue();
+          return;
+        }
+
         const u = new URL(url);
         const domain = u.hostname;
         
@@ -174,7 +213,45 @@ export async function analyzeSandbox(
           return;
         }
 
-        // External / Third-party outbound request from extension
+        // Hostile internal probe / SSRF defense (localhost, cloud metadata, RFC1918 private subnets)
+        if (isInternalOrForbiddenHost(domain)) {
+          const eventId = nextNetworkId();
+          networkEvents.push({
+            id: eventId,
+            scan_id: scanId,
+            url: url,
+            domain: domain,
+            method: request.method(),
+            request_headers: request.headers(),
+            response_headers: {},
+            request_size: request.postDataBuffer()?.length || 0,
+            response_size: 0,
+            timestamp: new Date().toISOString(),
+            initiator: '',
+            stack_trace: '',
+            is_third_party: true,
+            risk_level: 'critical',
+            classification: 'suspicious'
+          });
+
+          evidences.push({
+            id: nextEvidenceId(),
+            scan_id: scanId,
+            type: 'runtime',
+            source: 'network_interceptor',
+            description: `Blocked high-risk internal/private network probe to ${domain} (${url})`,
+            raw_data: { url, domain, blocked: true },
+            confidence: 'confirmed',
+            created_at: new Date().toISOString()
+          });
+
+          logger_.warn({ url, domain }, 'Blocked malicious extension SSRF attempt');
+          await route.abort('accessdenied');
+          return;
+        }
+
+        // External / Third-party outbound request from extension:
+        // Record telemetry for security findings, but safely mock response without hitting live internet
         const eventId = nextNetworkId();
         networkEvents.push({
           id: eventId,
@@ -194,10 +271,17 @@ export async function analyzeSandbox(
           classification: 'suspicious'
         });
         
-        await route.continue();
+        // Fulfill with synthetic response to preserve extension execution flow while isolating host network
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ ok: true, intercepted: true, sandbox: 'ExtensionGuard' })
+        });
       } catch (err) {
         logger_.warn({ url, error: err instanceof Error ? err.message : String(err) }, 'Error in route handler');
-        await route.continue(); // Fallback to actual request
+        try {
+          await route.abort('blockedbyclient');
+        } catch {}
       }
     });
     

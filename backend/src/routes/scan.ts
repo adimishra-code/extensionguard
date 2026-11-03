@@ -79,26 +79,7 @@ async function saveUpload(file: { file: NodeJS.ReadableStream; filename: string 
   return { path: filePath, hash: fileHash, size: rawBuffer.length };
 }
 
-function validateZipSecurity(zip: AdmZip): void {
-  const entries = zip.getEntries();
-  const MAX_FILE_COUNT = 500;
-  const MAX_UNCOMPRESSED_BYTES = 50 * 1024 * 1024; // 50 MB
-
-  if (entries.length > MAX_FILE_COUNT) {
-    throw new Error(`Archive exceeds maximum allowed file count (${MAX_FILE_COUNT})`);
-  }
-
-  let totalSize = 0;
-  for (const entry of entries) {
-    if (entry.entryName.includes('..') || entry.entryName.startsWith('/') || entry.entryName.startsWith('\\')) {
-      throw new Error(`Suspicious path traversal pattern in archive: ${entry.entryName}`);
-    }
-    totalSize += entry.header.size;
-    if (totalSize > MAX_UNCOMPRESSED_BYTES) {
-      throw new Error(`Archive exceeds maximum decompressed size limit (50 MB)`);
-    }
-  }
-}
+import { validateZipSecurity } from '../utils/zip-security';
 
 async function parseManifest(filePath: string): Promise<ExtensionManifest> {
   const zip = new AdmZip(filePath);

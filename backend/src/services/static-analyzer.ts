@@ -5,6 +5,7 @@ import { mkdtempSync, rmSync, existsSync, statSync } from 'fs';
 import { join, resolve } from 'path';
 import { tmpdir } from 'os';
 import AdmZip from 'adm-zip';
+import { validateZipSecurity } from '../utils/zip-security';
 
 export interface StaticAnalysisResult {
   codeFindings: CodeFinding[];
@@ -43,6 +44,7 @@ export async function analyzeStatic(
   try {
     if (existsSync(extensionPath) && statSync(extensionPath).isFile()) {
       const zip = new AdmZip(extensionPath);
+      validateZipSecurity(zip);
       zip.extractAllTo(tempDir, true);
     } else {
       targetDir = extensionPath;
