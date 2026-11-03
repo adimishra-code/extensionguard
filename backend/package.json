@@ -11,7 +11,7 @@
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
     "db:migrate": "prisma migrate dev",
-    "db:deploy": "prisma migrate deploy || prisma db push --accept-data-loss",
+    "db:deploy": "prisma db push --accept-data-loss",
     "db:generate": "prisma generate",
     "db:seed": "tsx prisma/seed.ts",
     "db:studio": "prisma studio"
@@ -22,7 +22,7 @@
     "@fastify/multipart": "^8.2.0",
     "@fastify/rate-limit": "^9.1.0",
     "@fastify/sensible": "^5.5.0",
-    "@fastify/websocket": "^11.3.0",
+    "@fastify/websocket": "^8.3.1",
     "@prisma/client": "^5.10.0",
     "@types/adm-zip": "^0.5.8",
     "@types/bcrypt": "^6.0.0",
