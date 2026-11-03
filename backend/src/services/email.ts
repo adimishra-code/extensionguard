@@ -52,13 +52,42 @@ class EmailService {
         logger.error({ err }, 'Failed to initialize SMTP transporter');
         this.isConfigured = false;
       }
+    } else if (config.RESEND_API_KEY) {
+      this.isConfigured = true;
+      logger.info('Resend HTTP API initialized for email delivery (HTTPS port 443)');
+    } else if (config.BREVO_API_KEY) {
+      this.isConfigured = true;
+      logger.info('Brevo HTTP API initialized for email delivery (HTTPS port 443)');
     } else {
-      logger.info('SMTP credentials not provided. Verification codes will be printed to application logs.');
+      logger.info('Email credentials not provided. Verification codes will be printed to application logs.');
       this.isConfigured = false;
     }
   }
 
+  public getStatus() {
+    const mode = config.RESEND_API_KEY
+      ? 'resend-api'
+      : config.BREVO_API_KEY
+      ? 'brevo-api'
+      : this.isConfigured && this.transporter
+      ? 'smtp'
+      : 'simulation';
+
+    return {
+      configured: mode !== 'simulation',
+      mode,
+      sender: this.getFromAddress(),
+    };
+  }
+
   private getFromAddress(): string {
+    if (config.RESEND_API_KEY) {
+      if (config.SMTP_FROM && !config.SMTP_FROM.includes('no-reply@extensionguard.io')) {
+        return config.SMTP_FROM;
+      }
+      return 'ExtensionGuard <onboarding@resend.dev>';
+    }
+
     if (config.SMTP_FROM && !config.SMTP_FROM.includes('no-reply@extensionguard.io')) {
       return config.SMTP_FROM;
     }
@@ -66,6 +95,77 @@ class EmailService {
       return `ExtensionGuard <${config.SMTP_USER}>`;
     }
     return config.SMTP_FROM || 'ExtensionGuard <no-reply@extensionguard.io>';
+  }
+
+  /**
+   * Dispatch email via HTTP REST API (port 443) — never blocked by cloud firewalls like Render free tier
+   */
+  private async sendViaHttp(to: string, subject: string, html: string, text: string): Promise<boolean> {
+    if (config.RESEND_API_KEY) {
+      try {
+        const from = this.getFromAddress();
+        const res = await fetch('https://api.resend.com/emails', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${config.RESEND_API_KEY.trim()}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            from,
+            to: [to],
+            subject,
+            html,
+            text,
+          }),
+        });
+
+        if (res.ok) {
+          logger.info({ email: to }, 'Verification email sent via Resend API (HTTPS port 443)');
+          return true;
+        } else {
+          const errBody = await res.text().catch(() => '');
+          logger.error({ status: res.status, errBody }, 'Resend API returned error response');
+          return false;
+        }
+      } catch (err: any) {
+        logger.error({ err: err?.message }, 'Failed to dispatch email via Resend API');
+        return false;
+      }
+    }
+
+    if (config.BREVO_API_KEY) {
+      try {
+        const senderEmail = config.SMTP_USER || 'security@extensionguard.io';
+        const res = await fetch('https://api.brevo.com/v3/smtp/email', {
+          method: 'POST',
+          headers: {
+            'api-key': config.BREVO_API_KEY.trim(),
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            sender: { name: 'ExtensionGuard', email: senderEmail },
+            to: [{ email: to }],
+            subject,
+            htmlContent: html,
+            textContent: text,
+          }),
+        });
+
+        if (res.ok) {
+          logger.info({ email: to }, 'Verification email sent via Brevo API (HTTPS port 443)');
+          return true;
+        } else {
+          const errBody = await res.text().catch(() => '');
+          logger.error({ status: res.status, errBody }, 'Brevo API returned error response');
+          return false;
+        }
+      } catch (err: any) {
+        logger.error({ err: err?.message }, 'Failed to dispatch email via Brevo API');
+        return false;
+      }
+    }
+
+    return false;
   }
 
   /**
@@ -126,6 +226,13 @@ class EmailService {
 
     const text = `Welcome to ExtensionGuard!\n\nYour verification code is: ${otpCode}\n\nOr verify directly at: ${verifyLink}\n\nThis code expires in 24 hours.`;
 
+    // 1. Try HTTPS API first if available (bypasses Render/cloud SMTP firewall restrictions)
+    if (config.RESEND_API_KEY || config.BREVO_API_KEY) {
+      const httpSuccess = await this.sendViaHttp(email, subject, html, text);
+      if (httpSuccess) return true;
+    }
+
+    // 2. Fall back to standard SMTP if configured
     if (this.isConfigured && this.transporter) {
       try {
         await this.transporter.sendMail({
@@ -137,8 +244,12 @@ class EmailService {
         });
         logger.info({ email }, 'Verification email sent via SMTP');
         return true;
-      } catch (err) {
-        logger.error({ err, email }, 'Failed to send verification email via SMTP');
+      } catch (err: any) {
+        logger.error({
+          err: err?.message,
+          code: err?.code,
+          email
+        }, 'Failed to send verification email via SMTP. (Note: Render free tier blocks outbound SMTP ports 25, 465, 587. Configure RESEND_API_KEY or BREVO_API_KEY to send via HTTPS port 443).');
         return false;
       }
     } else {
@@ -195,6 +306,13 @@ class EmailService {
 
     const text = `Reset your ExtensionGuard password by clicking: ${resetLink}\n\nThis link expires in 1 hour.`;
 
+    // 1. Try HTTPS API first if available
+    if (config.RESEND_API_KEY || config.BREVO_API_KEY) {
+      const httpSuccess = await this.sendViaHttp(email, subject, html, text);
+      if (httpSuccess) return true;
+    }
+
+    // 2. Fall back to SMTP
     if (this.isConfigured && this.transporter) {
       try {
         await this.transporter.sendMail({
@@ -206,8 +324,12 @@ class EmailService {
         });
         logger.info({ email }, 'Password reset email sent via SMTP');
         return true;
-      } catch (err) {
-        logger.error({ err, email }, 'Failed to send password reset email via SMTP');
+      } catch (err: any) {
+        logger.error({
+          err: err?.message,
+          code: err?.code,
+          email
+        }, 'Failed to send password reset email via SMTP. (Note: Render free tier blocks outbound SMTP ports 25, 465, 587. Configure RESEND_API_KEY or BREVO_API_KEY to send via HTTPS port 443).');
         return false;
       }
     } else {

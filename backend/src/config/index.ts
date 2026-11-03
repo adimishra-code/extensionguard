@@ -30,6 +30,8 @@ const envSchema = z.object({
   SMTP_PASS: z.string().optional(),
   SMTP_FROM: z.string().optional().default('ExtensionGuard <no-reply@extensionguard.io>'),
   SMTP_SECURE: z.coerce.boolean().optional().default(false),
+  RESEND_API_KEY: z.string().optional(),
+  BREVO_API_KEY: z.string().optional(),
 });
 
 // Validate early — fail fast on startup if env is misconfigured

@@ -19,6 +19,7 @@ import { networkRoutes } from './routes/network';
 import { alertRoutes } from './routes/alerts';
 import { adminRoutes } from './routes/admin';
 import { websocketPlugin } from './plugins/websocket';
+import { emailService } from './services/email';
 
 const fastify = Fastify({
   logger: false,
@@ -100,6 +101,7 @@ fastify.get('/api/health', async () => {
       database: dbStatus,
       redis: redisStatus,
       queue: 'running',
+      email: emailService.getStatus(),
     },
   };
 });
@@ -132,6 +134,8 @@ fastify.get('/api/health/detailed', async () => {
     services: {
       database: { status: dbStatus, latency_ms: dbLatencyMs },
       redis: { status: redisStatus, latency_ms: redisLatencyMs },
+      queue: { status: 'running' },
+      email: emailService.getStatus(),
       worker: { status: 'running', concurrency: 2 },
     },
   };
